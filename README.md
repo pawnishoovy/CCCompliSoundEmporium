@@ -10,7 +10,7 @@ This is a huge set of sounds, generic spawnable VFX, and generic scripts for usa
 
 I recommend using the files in this mod directly by pathing to them inside of your own mod. FMOD intelligently re-uses sound files, which means that it is safe for you to path to them even if this .rte also does. It won't use more memory needlessly.
 
-However, presets are provided and the mod is prioritized to the loaded first alphabetically, making it possible for you to use them anyway if you really don't want to make your own presets.
+However, presets are provided and the mod is prioritized to be loaded first alphabetically, making it possible for you to use them anyway if you really don't want to make your own presets.
 
 
 ## About VFX:

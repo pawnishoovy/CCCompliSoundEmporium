@@ -1,5 +1,3 @@
-# CCCompliSoundEmporium
-
 Welcome to the CompliSound Emporium, by trulythepawn.
 
 This is a huge set of sounds, generic spawnable VFX, and generic scripts for usage in other mods, with a focus on terrain-specific effects

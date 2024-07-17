@@ -1,5 +1,3 @@
-require("MasterTerrainIDList")
-
 function Create(self)
 	self.CompliSoundCannonShellHitSound = CreateSoundContainer("CompliSound Casing Drop Cannon Shell Hit Generic", "0CompliSoundEmporium.rte");
 end

@@ -32,7 +32,7 @@ function OnCollideWithTerrain(self, terrainID)
 	if not CompliSoundTerrainIDs[terrainID] and terrainID ~= 0 then
 		terrainID = 177; -- Default to concrete
 	end
-	print("hi")
+	
 	if self.CompliSoundImpulse.Magnitude > 25 then
 		if self.CompliSoundCasingDropHits < self.CompliSoundCasingDropMaxHits and terrainID ~= 0 then -- 0 = air
 			self.CompliSoundCasingDropHits = self.CompliSoundCasingDropHits + 1;

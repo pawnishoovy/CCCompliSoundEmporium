@@ -63,9 +63,11 @@ function Create(self)
 	self.CompliSoundActorFootIterator= 0;
     self.CompliSoundActorFootContacts = {false, false}
 	self.CompliSoundActorFootTimers = {Timer(), Timer()}
-	self.ComplISoundActorAntiFootNoiseDelay = 100
+	self.CompliSoundActorAntiFootNoiseDelay = 100
 	self.CompliSoundActorAntiJumpNoiseTimer = Timer();
-	self.ComplISoundActorWasInAir = false;
+	self.CompliSoundActorWasInAir = false;
+	self.CompliSoundActorWasInAirTimer = Timer();
+	self.CompliSoundActorWasInAirInvalidateTime = 50;
 	self.CompliSoundActorMoveSoundTimer = Timer();
 end
 
@@ -132,12 +134,6 @@ function OnCollideWithTerrain(self, terrainID)
 			self.CompliSoundProneSoundPlayed = true;
 			self.CompliSoundActorProneSounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 			self.CompliSoundActorImpactSoundTimer:Reset();
-		elseif self.TravelImpulse.Magnitude > self.CompliSoundActorImpactHeavyThreshold then
-			self.CompliSoundActorImpactHeavySounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
-			self.CompliSoundActorImpactSoundTimer:Reset();
-		elseif self.TravelImpulse.Magnitude > self.CompliSoundActorImpactLightThreshold then
-			self.CompliSoundActorImpactLightSounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
-			self.CompliSoundActorImpactSoundTimer:Reset();
 		end
 	end
 end
@@ -150,10 +146,11 @@ function ThreadedUpdate(self)
 	local lastSteppedTerrainID;
 
 	if self:IsPlayerControlled() then
-		if self.Vel.Y > 10 then
-			self.ComplISoundActorWasInAir = true;
-		else
-			self.ComplISoundActorWasInAir = false;
+		if self.Vel.Y > 10 or (self.Vel.Y > 5 and self.Vel.Magnitude > 10) then
+			self.CompliSoundActorWasInAir = true;
+			self.CompliSoundActorWasInAirTimer:Reset();
+		elseif self.CompliSoundActorWasInAirTimer:IsPastSimMS(self.CompliSoundActorWasInAirInvalidateTime) then
+			self.CompliSoundActorWasInAir = false;
 		end
 		
 		-- Check a position under each foot to approximate foot contact with land
@@ -167,25 +164,29 @@ function ThreadedUpdate(self)
 
 			if foot ~= nil then
 				local footPos = foot.Pos				
-				local mat = nil
-				local pixelPos = footPos + Vector(0, 4)
-				lastSteppedTerrainID = SceneMan:GetTerrMatter(pixelPos.X, pixelPos.Y)
-				if lastSteppedTerrainID ~= 0 then
-					mat = SceneMan:GetMaterialFromID(lastSteppedTerrainID)
+				local mat = nils
+				local pos = Vector(0, 0);
+				local ray = SceneMan:CastObstacleRay(footPos, Vector(0, 5), pos, Vector(0, 0), self.ID, self.Team, 0, 1);
+				if ray ~= -1 then
+					terrainID = SceneMan:GetTerrMatter(pos.X, pos.Y)
+					if terrainID ~= 0 then
+						lastSteppedTerrainID = terrainID;
+						mat = SceneMan:GetMaterialFromID(lastSteppedTerrainID)
+					end
 				end
 				
 				local movement = (controller:IsState(Controller.MOVE_LEFT) == true or controller:IsState(Controller.MOVE_RIGHT) == true or self.Vel.Magnitude > 3)
 				if mat ~= nil then
 					if self.CompliSoundActorFootContacts[i] == false then
 						self.CompliSoundActorFootContacts[i] = true
-						if self.CompliSoundActorFootTimers[i]:IsPastSimMS(self.ComplISoundActorAntiFootNoiseDelay) and movement then																	
+						if self.CompliSoundActorFootTimers[i]:IsPastSimMS(self.CompliSoundActorAntiFootNoiseDelay) and movement then																	
 							self.CompliSoundActorFootTimers[i]:Reset()
 						end
 					end
 				else
 					if self.CompliSoundActorFootContacts[i] == true then
 						self.CompliSoundActorFootContacts[i] = false
-						if self.CompliSoundActorFootTimers[i]:IsPastSimMS(self.ComplISoundActorAntiFootNoiseDelay) and movement then
+						if self.CompliSoundActorFootTimers[i]:IsPastSimMS(self.CompliSoundActorAntiFootNoiseDelay) and movement then
 							self.CompliSoundActorFootTimers[i]:Reset()
 						end
 					end
@@ -193,10 +194,10 @@ function ThreadedUpdate(self)
 			end
 		end
 	else -- AI already is aware of whether we're flying or not, make use of it
-		if self.AI.flying == true and self.ComplISoundActorWasInAir == false then
-			self.ComplISoundActorWasInAir = true;
-		elseif self.AI.flying == false and self.ComplISoundActorWasInAir == true then
-			self.ComplISoundActorWasInAir = false;
+		if self.AI.flying == true and self.CompliSoundActorWasInAir == false then
+			self.CompliSoundActorWasInAir = true;
+		elseif self.AI.flying == false and self.CompliSoundActorWasInAir == true then
+			self.CompliSoundActorWasInAir = false;
 			if self.CompliSoundActorMoveSoundTimer:IsPastSimMS(500) then
 				local landTerrainID = lastSteppedTerrainID;
 				if lastSteppedTerrainID ~= 0 then
@@ -210,9 +211,14 @@ function ThreadedUpdate(self)
 		end
 	end
 	
-	if self.ComplISoundActorWasInAir then
+	if not self.CompliSoundActorMoving then
+		self.CompliSoundActorFootIterator = 0;
+	end
+	
+	if self.CompliSoundActorWasInAir or self.CompliSoundActorIsJumping then
 		if (self:IsPlayerControlled() and self.CompliSoundActorFootContacts[1] == true or self.CompliSoundActorFootContacts[2] == true) and self.CompliSoundActorAntiJumpNoiseTimer:IsPastSimMS(100) then
-			self.ComplISoundActorWasInAir = false;
+			self.CompliSoundActorWasInAir = false;
+			self.CompliSoundActorIsJumping = false;
 			if self.Vel.Y > 0 and self.CompliSoundActorMoveSoundTimer:IsPastSimMS(500) then
 				local landTerrainID = lastSteppedTerrainID;
 				if lastSteppedTerrainID ~= 0 then
@@ -239,4 +245,29 @@ function ThreadedUpdate(self)
 			self.CompliSoundActorMoveSoundTimer:Reset();
 		end
 	end
+	
+	if self.CompliSoundActorPlayJumpSound then
+		self.CompliSoundActorPlayJumpSound = false;
+		local jumpTerrainID = lastSteppedTerrainID;
+		if lastSteppedTerrainID ~= 0 then
+			if self.CompliSoundActorJumpSounds[CompliSoundTerrainIDs[lastSteppedTerrainID]] == nil then
+				jumpTerrainID = 177; -- Default to concrete
+			end
+			self.CompliSoundActorJumpSounds[CompliSoundTerrainIDs[jumpTerrainID]]:Play(self.Pos);
+		end
+		self.CompliSoundActorAntiJumpNoiseTimer:Reset();
+		self.CompliSoundActorIsJumping = true;
+	end
+	
+	
+	if self.CompliSoundActorImpactSoundTimer:IsPastSimMS(self.CompliSoundActorImpactSoundCooldown) then
+		if self.Status > 0 and self.TravelImpulse.Magnitude > self.CompliSoundActorImpactHeavyThreshold then
+			self.CompliSoundActorImpactHeavySounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
+			self.CompliSoundActorImpactSoundTimer:Reset();
+		elseif self.TravelImpulse.Magnitude > self.CompliSoundActorImpactLightThreshold then
+			self.CompliSoundActorImpactLightSounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
+			self.CompliSoundActorImpactSoundTimer:Reset();
+		end
+	end
+
 end

@@ -23,53 +23,64 @@ function OnMessage(self, message, object)
 end
 
 function Create(self)
-	self.CompliSoundActorWalkSounds = {};
-	self.CompliSoundActorWalkSounds.Concrete = CreateSoundContainer("CompliSound Walk Concrete", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorWalkSounds.Dirt = CreateSoundContainer("CompliSound Walk Dirt", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorWalkSounds.Sand = CreateSoundContainer("CompliSound Walk Sand", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorWalkSounds.SolidMetal = CreateSoundContainer("CompliSound Walk SolidMetal", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds = {};
+
+	self.CompliSoundActorTerrainSounds.Walk = {};
+	self.CompliSoundActorTerrainSounds.Walk.Concrete = CreateSoundContainer("CompliSound Walk Concrete", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Walk.Dirt = CreateSoundContainer("CompliSound Walk Dirt", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Walk.Sand = CreateSoundContainer("CompliSound Walk Sand", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Walk.SolidMetal = CreateSoundContainer("CompliSound Walk SolidMetal", "0CompliSoundEmporium.rte");
 	
-	self.CompliSoundActorSprintSounds = {};
-	self.CompliSoundActorSprintSounds.Concrete = CreateSoundContainer("CompliSound Sprint Concrete", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorSprintSounds.Dirt = CreateSoundContainer("CompliSound Sprint Dirt", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorSprintSounds.Sand = CreateSoundContainer("CompliSound Sprint Sand", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorSprintSounds.SolidMetal = CreateSoundContainer("CompliSound Sprint SolidMetal", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Sprint = {};
+	self.CompliSoundActorTerrainSounds.Sprint.Concrete = CreateSoundContainer("CompliSound Sprint Concrete", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Sprint.Dirt = CreateSoundContainer("CompliSound Sprint Dirt", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Sprint.Sand = CreateSoundContainer("CompliSound Sprint Sand", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Sprint.SolidMetal = CreateSoundContainer("CompliSound Sprint SolidMetal", "0CompliSoundEmporium.rte");
 	
-	self.CompliSoundActorJumpSounds = {};
-	self.CompliSoundActorJumpSounds.Concrete = CreateSoundContainer("CompliSound Jump Concrete", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorJumpSounds.Dirt = CreateSoundContainer("CompliSound Jump Dirt", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorJumpSounds.Sand = CreateSoundContainer("CompliSound Jump Sand", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorJumpSounds.SolidMetal = CreateSoundContainer("CompliSound Jump SolidMetal", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Jump = {};
+	self.CompliSoundActorTerrainSounds.Jump.Concrete = CreateSoundContainer("CompliSound Jump Concrete", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Jump.Dirt = CreateSoundContainer("CompliSound Jump Dirt", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Jump.Sand = CreateSoundContainer("CompliSound Jump Sand", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Jump.SolidMetal = CreateSoundContainer("CompliSound Jump SolidMetal", "0CompliSoundEmporium.rte");
 	
-	self.CompliSoundActorLandSounds = {};
-	self.CompliSoundActorLandSounds.Concrete = CreateSoundContainer("CompliSound Land Concrete", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorLandSounds.Dirt = CreateSoundContainer("CompliSound Land Dirt", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorLandSounds.Sand = CreateSoundContainer("CompliSound Land Sand", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorLandSounds.SolidMetal = CreateSoundContainer("CompliSound Land SolidMetal", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Land = {};
+	self.CompliSoundActorTerrainSounds.Land.Concrete = CreateSoundContainer("CompliSound Land Concrete", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Land.Dirt = CreateSoundContainer("CompliSound Land Dirt", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Land.Sand = CreateSoundContainer("CompliSound Land Sand", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Land.SolidMetal = CreateSoundContainer("CompliSound Land SolidMetal", "0CompliSoundEmporium.rte");
 	
-	self.CompliSoundActorProneSounds = {};
-	self.CompliSoundActorProneSounds.Concrete = CreateSoundContainer("CompliSound Prone Concrete", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorProneSounds.Dirt = CreateSoundContainer("CompliSound Prone Dirt", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorProneSounds.Sand = CreateSoundContainer("CompliSound Prone Sand", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorProneSounds.SolidMetal = CreateSoundContainer("CompliSound Prone SolidMetal", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Prone = {};
+	self.CompliSoundActorTerrainSounds.Prone.Concrete = CreateSoundContainer("CompliSound Prone Concrete", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Prone.Dirt = CreateSoundContainer("CompliSound Prone Dirt", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Prone.Sand = CreateSoundContainer("CompliSound Prone Sand", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Prone.SolidMetal = CreateSoundContainer("CompliSound Prone SolidMetal", "0CompliSoundEmporium.rte");
 	
-	self.CompliSoundActorCrawlSounds = {};
-	self.CompliSoundActorCrawlSounds.Concrete = CreateSoundContainer("CompliSound Crawl Concrete", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorCrawlSounds.Dirt = CreateSoundContainer("CompliSound Crawl Dirt", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorCrawlSounds.Sand = CreateSoundContainer("CompliSound Crawl Sand", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorCrawlSounds.SolidMetal = CreateSoundContainer("CompliSound Crawl SolidMetal", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Crawl = {};
+	self.CompliSoundActorTerrainSounds.Crawl.Concrete = CreateSoundContainer("CompliSound Crawl Concrete", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Crawl.Dirt = CreateSoundContainer("CompliSound Crawl Dirt", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Crawl.Sand = CreateSoundContainer("CompliSound Crawl Sand", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.Crawl.SolidMetal = CreateSoundContainer("CompliSound Crawl SolidMetal", "0CompliSoundEmporium.rte");
 	
-	self.CompliSoundActorImpactLightSounds = {};
-	self.CompliSoundActorImpactLightSounds.Concrete = CreateSoundContainer("CompliSound Impact Light Concrete", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorImpactLightSounds.Dirt = CreateSoundContainer("CompliSound Impact Light Dirt", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorImpactLightSounds.Sand = CreateSoundContainer("CompliSound Impact Light Sand", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorImpactLightSounds.SolidMetal = CreateSoundContainer("CompliSound Impact Light SolidMetal", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.ImpactLight = {};
+	self.CompliSoundActorTerrainSounds.ImpactLight.Concrete = CreateSoundContainer("CompliSound Impact Light Concrete", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.ImpactLight.Dirt = CreateSoundContainer("CompliSound Impact Light Dirt", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.ImpactLight.Sand = CreateSoundContainer("CompliSound Impact Light Sand", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.ImpactLight.SolidMetal = CreateSoundContainer("CompliSound Impact Light SolidMetal", "0CompliSoundEmporium.rte");
 	
-	self.CompliSoundActorImpactHeavySounds = {};
-	self.CompliSoundActorImpactHeavySounds.Concrete = CreateSoundContainer("CompliSound Impact Heavy Concrete", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorImpactHeavySounds.Dirt = CreateSoundContainer("CompliSound Impact Heavy Dirt", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorImpactHeavySounds.Sand = CreateSoundContainer("CompliSound Impact Heavy Sand", "0CompliSoundEmporium.rte");
-	self.CompliSoundActorImpactHeavySounds.SolidMetal = CreateSoundContainer("CompliSound Impact Heavy SolidMetal", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.ImpactHeavy = {};
+	self.CompliSoundActorTerrainSounds.ImpactHeavy.Concrete = CreateSoundContainer("CompliSound Impact Heavy Concrete", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.ImpactHeavy.Dirt = CreateSoundContainer("CompliSound Impact Heavy Dirt", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.ImpactHeavy.Sand = CreateSoundContainer("CompliSound Impact Heavy Sand", "0CompliSoundEmporium.rte");
+	self.CompliSoundActorTerrainSounds.ImpactHeavy.SolidMetal = CreateSoundContainer("CompliSound Impact Heavy SolidMetal", "0CompliSoundEmporium.rte");
+	
+	self.CompliSoundActorTerrainSoundDefaultVolumeOverride = self.CompliSoundActorTerrainSoundDefaultVolumeOverride or 1.0;
+	
+	for soundType, soundTable in pairs(self.CompliSoundActorTerrainSounds) do
+		for terrain, soundContainer in pairs(soundTable) do
+			soundContainer.Pitch = self.CompliSoundActorTerrainSoundPitchOverride or 1.0;
+			
+		end
+	end	
 	
 	if self.Head then
 		-- Script to grab terrain collision IDs from the head as well as the torso.
@@ -130,12 +141,12 @@ function OnStride(self)
 			end
 		
 			if self.CompliSoundActorIsSprinting then
-				if self.CompliSoundActorSprintSounds[CompliSoundTerrainIDs[terrainID]] ~= nil then
-					self.CompliSoundActorSprintSounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
+				if self.CompliSoundActorTerrainSounds.Sprint[CompliSoundTerrainIDs[terrainID]] ~= nil then
+					self.CompliSoundActorTerrainSounds.Sprint[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
 			else
-				if self.CompliSoundActorWalkSounds[CompliSoundTerrainIDs[terrainID]] ~= nil then
-					self.CompliSoundActorWalkSounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
+				if self.CompliSoundActorTerrainSounds.Walk[CompliSoundTerrainIDs[terrainID]] ~= nil then
+					self.CompliSoundActorTerrainSounds.Walk[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
 			end
 			
@@ -154,8 +165,8 @@ function OnCollideWithTerrain(self, terrainID)
 	if self.CompliSoundActorImpactSoundTimer:IsPastSimMS(self.CompliSoundActorImpactSoundCooldown) and not self.CompliSoundActorIsSprinting then
 		if self.CompliSoundActorCrouching and self.CompliSoundActorMoving and not self.CompliSoundProneSoundPlayed then
 			self.CompliSoundProneSoundPlayed = true;
-			if self.CompliSoundActorProneSounds[CompliSoundTerrainIDs[terrainID]] ~= nil then
-				self.CompliSoundActorProneSounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
+			if self.CompliSoundActorTerrainSounds.Prone[CompliSoundTerrainIDs[terrainID]] ~= nil then
+				self.CompliSoundActorTerrainSounds.Prone[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 			end
 			self.CompliSoundActorImpactSoundTimer:Reset();
 			if self.CompliSoundActorProneCallback then
@@ -169,37 +180,12 @@ end
 
 function ThreadedUpdate(self)
 	local isPlayerControlled = self:IsPlayerControlled();
-
-	for terrain, soundContainer in pairs(self.CompliSoundActorWalkSounds) do
-		soundContainer.Pos = self.Pos;
-		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
-	end
-	for terrain, soundContainer in pairs(self.CompliSoundActorSprintSounds) do
-		soundContainer.Pos = self.Pos;
-		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
-	end
-	for terrain, soundContainer in pairs(self.CompliSoundActorJumpSounds) do
-		soundContainer.Pos = self.Pos;
-		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
-	end
-	for terrain, soundContainer in pairs(self.CompliSoundActorLandSounds) do
-		soundContainer.Pos = self.Pos;
-		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
-	end
-	for terrain, soundContainer in pairs(self.CompliSoundActorProneSounds) do
-		soundContainer.Pos = self.Pos;
-		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
-	end
-	for terrain, soundContainer in pairs(self.CompliSoundActorCrawlSounds) do
-		soundContainer.Pos = self.Pos;
-		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
-	end
-	for terrain, soundContainer in pairs(self.CompliSoundActorImpactLightSounds) do
-		soundContainer.Pos = self.Pos;
-	end
-	for terrain, soundContainer in pairs(self.CompliSoundActorImpactHeavySounds) do
-		soundContainer.Pos = self.Pos;
-		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
+	
+	for soundType, soundTable in pairs(self.CompliSoundActorTerrainSounds) do
+		for terrain, soundContainer in pairs(soundTable) do
+			soundContainer.Pos = self.Pos;
+			soundContainer.Volume = self.CompliSoundActorTerrainSoundDefaultVolumeOverride
+		end
 	end
 
 	local controller = self:GetController();
@@ -267,8 +253,8 @@ function ThreadedUpdate(self)
 					if not CompliSoundTerrainIDs[landTerrainID] then
 						landTerrainID = 177; -- Default to concrete
 					end
-					if self.CompliSoundActorLandSounds[CompliSoundTerrainIDs[landTerrainID]] then
-						self.CompliSoundActorLandSounds[CompliSoundTerrainIDs[landTerrainID]]:Play(self.Pos);
+					if self.CompliSoundActorTerrainSounds.Land[CompliSoundTerrainIDs[landTerrainID]] then
+						self.CompliSoundActorTerrainSounds.Land[CompliSoundTerrainIDs[landTerrainID]]:Play(self.Pos);
 					end
 				end
 				self.CompliSoundActorMoveSoundTimer:Reset();
@@ -293,8 +279,8 @@ function ThreadedUpdate(self)
 					if not CompliSoundTerrainIDs[landTerrainID] then
 						landTerrainID = 177; -- Default to concrete
 					end
-					if self.CompliSoundActorLandSounds[CompliSoundTerrainIDs[landTerrainID]] then
-						self.CompliSoundActorLandSounds[CompliSoundTerrainIDs[landTerrainID]]:Play(self.Pos);
+					if self.CompliSoundActorTerrainSounds.Land[CompliSoundTerrainIDs[landTerrainID]] then
+						self.CompliSoundActorTerrainSounds.Land[CompliSoundTerrainIDs[landTerrainID]]:Play(self.Pos);
 					end
 				end
 				self.CompliSoundActorMoveSoundTimer:Reset();
@@ -316,8 +302,8 @@ function ThreadedUpdate(self)
 				if not CompliSoundTerrainIDs[terrainID] then
 					terrainID = 177; -- Default to concrete
 				end
-				if self.CompliSoundActorCrawlSounds[CompliSoundTerrainIDs[terrainID]] ~= nil then
-					self.CompliSoundActorCrawlSounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
+				if self.CompliSoundActorTerrainSounds.Crawl[CompliSoundTerrainIDs[terrainID]] ~= nil then
+					self.CompliSoundActorTerrainSounds.Crawl[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
 			end
 			self.CompliSoundActorMoveSoundTimer:Reset();
@@ -334,8 +320,8 @@ function ThreadedUpdate(self)
 			if not CompliSoundTerrainIDs[jumpTerrainID] then
 				jumpTerrainID = 177; -- Default to concrete
 			end
-			if self.CompliSoundActorJumpSounds[CompliSoundTerrainIDs[jumpTerrainID]] then
-				self.CompliSoundActorJumpSounds[CompliSoundTerrainIDs[jumpTerrainID]]:Play(self.Pos);
+			if self.CompliSoundActorTerrainSounds.Jump[CompliSoundTerrainIDs[jumpTerrainID]] then
+				self.CompliSoundActorTerrainSounds.Jump[CompliSoundTerrainIDs[jumpTerrainID]]:Play(self.Pos);
 			end
 		end
 		self.CompliSoundActorAntiJumpNoiseTimer:Reset();
@@ -354,16 +340,16 @@ function ThreadedUpdate(self)
 				terrainID = 177; -- Default to concrete
 			end
 			if self.Status > 0 and self.TravelImpulse.Magnitude > self.CompliSoundActorImpactHeavyThreshold then
-				if self.CompliSoundActorImpactHeavySounds[CompliSoundTerrainIDs[terrainID]] then
-					self.CompliSoundActorImpactHeavySounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
+				if self.CompliSoundActorTerrainSounds.ImpactHeavy[CompliSoundTerrainIDs[terrainID]] then
+					self.CompliSoundActorTerrainSounds.ImpactHeavy[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
 				self.CompliSoundActorImpactSoundTimer:Reset();
 				if self.CompliSoundActorImpactHeavyCallback then
 					self.CompliSoundActorImpactHeavyCallback(self);
 				end
 			elseif self.TravelImpulse.Magnitude > self.CompliSoundActorImpactLightThreshold then
-				if self.CompliSoundActorImpactLightSounds[CompliSoundTerrainIDs[terrainID]] then
-					self.CompliSoundActorImpactLightSounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
+				if self.CompliSoundActorTerrainSounds.ImpactLight[CompliSoundTerrainIDs[terrainID]] then
+					self.CompliSoundActorTerrainSounds.ImpactLight[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
 				self.CompliSoundActorImpactSoundTimer:Reset();
 				if self.CompliSoundActorImpactLightCallback then

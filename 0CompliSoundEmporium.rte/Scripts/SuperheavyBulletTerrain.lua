@@ -29,6 +29,9 @@ function OnCollideWithTerrain(self, terrainID)
 	if self.CompliSoundBulletImpactDone ~= true then
 		self.CompliSoundBulletImpactDone = true;
 		if terrainID ~= 0 then -- 0 = air
+			if not CompliSoundTerrainIDs[terrainID] then
+				terrainID = 177;
+			end
 			if self.CompliSoundBulletTerrainSounds[CompliSoundTerrainIDs[terrainID]] ~= nil then
 				self.CompliSoundBulletTerrainSounds[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 			end
@@ -43,11 +46,6 @@ function OnCollideWithTerrain(self, terrainID)
 					extraGFX.Vel = Vector(self.Vel.X, self.Vel.Y):DegRotate(math.random(-10, 10));
 					MovableMan:AddParticle(extraGFX)
 				end
-			else
-				local GFX = self.CompliSoundBulletTerrainGFX.Impact[177]:Clone()
-				GFX.Pos = self.Pos
-				GFX.Vel = self.Vel
-				MovableMan:AddParticle(GFX)
 			end				
 		end
 	end

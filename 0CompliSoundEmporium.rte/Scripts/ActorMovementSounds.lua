@@ -168,30 +168,38 @@ function OnCollideWithTerrain(self, terrainID)
 end
 
 function ThreadedUpdate(self)
+	local isPlayerControlled = self:IsPlayerControlled();
 
 	for terrain, soundContainer in pairs(self.CompliSoundActorWalkSounds) do
 		soundContainer.Pos = self.Pos;
+		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
 	end
 	for terrain, soundContainer in pairs(self.CompliSoundActorSprintSounds) do
 		soundContainer.Pos = self.Pos;
+		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
 	end
 	for terrain, soundContainer in pairs(self.CompliSoundActorJumpSounds) do
 		soundContainer.Pos = self.Pos;
+		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
 	end
 	for terrain, soundContainer in pairs(self.CompliSoundActorLandSounds) do
 		soundContainer.Pos = self.Pos;
+		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
 	end
 	for terrain, soundContainer in pairs(self.CompliSoundActorProneSounds) do
 		soundContainer.Pos = self.Pos;
+		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
 	end
 	for terrain, soundContainer in pairs(self.CompliSoundActorCrawlSounds) do
 		soundContainer.Pos = self.Pos;
+		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
 	end
 	for terrain, soundContainer in pairs(self.CompliSoundActorImpactLightSounds) do
 		soundContainer.Pos = self.Pos;
 	end
 	for terrain, soundContainer in pairs(self.CompliSoundActorImpactHeavySounds) do
 		soundContainer.Pos = self.Pos;
+		soundContainer.Volume = isPlayerControlled and 1.0 or 0.6;
 	end
 
 	local controller = self:GetController();
@@ -200,7 +208,7 @@ function ThreadedUpdate(self)
 	
 	local lastSteppedTerrainID;
 
-	if self:IsPlayerControlled() then
+	if isPlayerControlled then
 		if self.Vel.Y > 10 or (self.Vel.Y > 5 and self.Vel.Magnitude > 10) then
 			self.CompliSoundActorWasInAir = true;
 			self.CompliSoundActorWasInAirTimer:Reset();
@@ -276,7 +284,7 @@ function ThreadedUpdate(self)
 	end
 	
 	if self.CompliSoundActorWasInAir or self.CompliSoundActorIsJumping then
-		if (self:IsPlayerControlled() and self.CompliSoundActorFootContacts[1] == true or self.CompliSoundActorFootContacts[2] == true) and self.CompliSoundActorAntiJumpNoiseTimer:IsPastSimMS(100) then
+		if (isPlayerControlled and self.CompliSoundActorFootContacts[1] == true or self.CompliSoundActorFootContacts[2] == true) and self.CompliSoundActorAntiJumpNoiseTimer:IsPastSimMS(100) then
 			self.CompliSoundActorWasInAir = false;
 			self.CompliSoundActorIsJumping = false;
 			if self.Vel.Y > 0 and self.CompliSoundActorMoveSoundTimer:IsPastSimMS(500) then

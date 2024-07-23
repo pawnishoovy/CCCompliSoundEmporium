@@ -11,7 +11,7 @@ function Create(self)
 	self.CompliSoundCasingDropTerrainSounds.Roll = {};
 	self.CompliSoundCasingDropTerrainSounds.Roll.Concrete = CreateSoundContainer("CompliSound Casing Drop Shotgun Shell Roll Concrete", "0CompliSoundEmporium.rte");
 	self.CompliSoundCasingDropTerrainSounds.Roll.Dirt = CreateSoundContainer("CompliSound Casing Drop Shotgun Shell Roll Dirt", "0CompliSoundEmporium.rte");
-	self.CompliSoundCasingDropTerrainSounds.Roll.Sand = CreateSoundContainer("CompliSound Casing Drop Shotgun Shell Roll Sand", "0CompliSoundEmporium.rte");
+	self.CompliSoundCasingDropTerrainSounds.Roll.Sand = CreateSoundContainer("CompliSound Casing Drop Shotgun Shell Roll Dirt", "0CompliSoundEmporium.rte");
 	self.CompliSoundCasingDropTerrainSounds.Roll.SolidMetal = CreateSoundContainer("CompliSound Casing Drop Shotgun Shell Roll SolidMetal", "0CompliSoundEmporium.rte");
 	
 	self.CompliSoundCasingDropMaxHits = 2;

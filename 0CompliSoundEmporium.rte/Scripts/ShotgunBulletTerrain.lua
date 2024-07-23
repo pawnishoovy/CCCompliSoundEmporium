@@ -13,16 +13,16 @@ function Create(self)
 	self.CompliSoundBulletTerrainSounds.SolidMetal = CreateSoundContainer("CompliSound Shotgun Bullet Impact SolidMetal", "0CompliSoundEmporium.rte");
 	
 	self.CompliSoundBulletTerrainGFX = {};
-	self.CompliSoundBulletTerrainGFX.Concrete = CreateMOSRotating("CompliSound GFX Shotgun Bullet Impact Concrete", "0CompliSoundEmporium.rte");
-	self.CompliSoundBulletTerrainGFX.Dirt = CreateMOSRotating("CompliSound GFX Shotgun Bullet Impact Dirt", "0CompliSoundEmporium.rte");
-	self.CompliSoundBulletTerrainGFX.Sand = CreateMOSRotating("CompliSound GFX Shotgun Bullet Impact Sand", "0CompliSoundEmporium.rte");
-	self.CompliSoundBulletTerrainGFX.SolidMetal = CreateMOSRotating("CompliSound GFX Shotgun Bullet Impact SolidMetal", "0CompliSoundEmporium.rte");
+	self.CompliSoundBulletTerrainGFX.Concrete = CreateMOSRotating("CompliSound GFX Heavy Bullet Impact Concrete", "0CompliSoundEmporium.rte");
+	self.CompliSoundBulletTerrainGFX.Dirt = CreateMOSRotating("CompliSound GFX Heavy Bullet Impact Dirt", "0CompliSoundEmporium.rte");
+	self.CompliSoundBulletTerrainGFX.Sand = CreateMOSRotating("CompliSound GFX Heavy Bullet Impact Sand", "0CompliSoundEmporium.rte");
+	self.CompliSoundBulletTerrainGFX.SolidMetal = CreateMOSRotating("CompliSound GFX Heavy Bullet Impact SolidMetal", "0CompliSoundEmporium.rte");
 	
 	self.CompliSoundBulletTerrainExtraGFX = {};
-	self.CompliSoundBulletTerrainExtraGFX.Concrete = CreateMOSRotating("CompliSound GFX Shotgun Bullet Impact Concrete Extra", "0CompliSoundEmporium.rte");
-	self.CompliSoundBulletTerrainExtraGFX.Dirt = CreateMOSRotating("CompliSound GFX Shotgun Bullet Impact Dirt Extra", "0CompliSoundEmporium.rte");
-	self.CompliSoundBulletTerrainExtraGFX.Sand = CreateMOSRotating("CompliSound GFX Shotgun Bullet Impact Sand Extra", "0CompliSoundEmporium.rte");
-	self.CompliSoundBulletTerrainExtraGFX.SolidMetal = CreateMOSRotating("CompliSound GFX Shotgun Bullet Impact SolidMetal Extra", "0CompliSoundEmporium.rte");
+	self.CompliSoundBulletTerrainExtraGFX.Concrete = CreateMOSRotating("CompliSound GFX Heavy Bullet Impact Concrete Extra", "0CompliSoundEmporium.rte");
+	self.CompliSoundBulletTerrainExtraGFX.Dirt = CreateMOSRotating("CompliSound GFX Heavy Bullet Impact Dirt Extra", "0CompliSoundEmporium.rte");
+	self.CompliSoundBulletTerrainExtraGFX.Sand = CreateMOSRotating("CompliSound GFX Heavy Bullet Impact Sand Extra", "0CompliSoundEmporium.rte");
+	self.CompliSoundBulletTerrainExtraGFX.SolidMetal = CreateMOSRotating("CompliSound GFX Heavy Bullet Impact SolidMetal Extra", "0CompliSoundEmporium.rte");
 end
 
 function OnCollideWithTerrain(self, terrainID)

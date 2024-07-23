@@ -40,7 +40,7 @@ function OnCollideWithTerrain(self, terrainID)
 				self.CompliSoundCasingDropTerrainSounds.Hit[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 			end
 		end
-	elseif self.CompliSoundImpulse.Magnitude > 6 then
+	elseif self.CompliSoundImpulse.Magnitude > 2 then
 		if self.CompliSoundCasingDropRolls < self.CompliSoundCasingDropMaxRolls and terrainID ~= 0 then -- 0 = air
 			self.CompliSoundCasingDropRoll = self.CompliSoundCasingDropRolls + 1;
 			if self.CompliSoundCasingDropTerrainSounds.Roll[CompliSoundTerrainIDs[terrainID]] ~= nil then

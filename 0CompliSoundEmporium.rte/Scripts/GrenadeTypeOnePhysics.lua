@@ -29,12 +29,12 @@ function Create(self)
 	self.CompliSoundLastVel = self.Vel;
 	
 	self.CompliSoundHitTimer = Timer();
-	self.CompliSoundHitDelay = 150;
+	self.CompliSoundHitDelay = 0;
 	
 	self.CompliSoundGraceRollPlayed = false;
 end
 
-function ThreadedUpdate(self)
+function Update(self)
 	self.CompliSoundImpulse = (self.Vel - self.CompliSoundLastVel) / TimerMan.DeltaTimeSecs * self.Vel.Magnitude * 0.1
 	self.CompliSoundLastVel = Vector(self.Vel.X, self.Vel.Y)
 end
@@ -54,23 +54,27 @@ function OnCollideWithTerrain(self, terrainID)
 	end
 	
 	if self.CompliSoundHitTimer:IsPastSimMS(self.CompliSoundHitDelay) then
-		if self.CompliSoundImpulse.Magnitude > 25 then
+		--if self.CompliSoundImpulse.Magnitude > 3 then
+		--	print(self.CompliSoundImpulse.Magnitude)
+		--end
+		if self.CompliSoundImpulse.Magnitude > 35 then
+
 			self.CompliSoundHitTimer:Reset();
-			self.CompliSoundHitDelay = self.CompliSoundHitDelay + 50;
+			self.CompliSoundHitDelay = self.CompliSoundHitDelay + 25;
 			if terrainID ~= 0 then -- 0 = air
 				if self.CompliSoundGrenadePhysicsTerrainSounds.HitHard[CompliSoundTerrainIDs[terrainID]] ~= nil then
 					self.CompliSoundGrenadePhysicsTerrainSounds.HitHard[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
 			end
-		elseif self.CompliSoundImpulse.Magnitude > 16 then
+		elseif self.CompliSoundImpulse.Magnitude > 25 then
 			self.CompliSoundHitTimer:Reset();
-			self.CompliSoundHitDelay = self.CompliSoundHitDelay + 50;
+			self.CompliSoundHitDelay = self.CompliSoundHitDelay + 25;
 			if terrainID ~= 0 then -- 0 = air
 				if self.CompliSoundGrenadePhysicsTerrainSounds.HitMed[CompliSoundTerrainIDs[terrainID]] ~= nil then
 					self.CompliSoundGrenadePhysicsTerrainSounds.HitMed[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
 			end
-		elseif self.CompliSoundImpulse.Magnitude > 12 then
+		elseif self.CompliSoundImpulse.Magnitude > 7 then
 			self.CompliSoundHitTimer:Reset();
 			self.CompliSoundHitDelay = self.CompliSoundHitDelay + 50;
 			if terrainID ~= 0 then -- 0 = air
@@ -78,7 +82,7 @@ function OnCollideWithTerrain(self, terrainID)
 					self.CompliSoundGrenadePhysicsTerrainSounds.HitSoft[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
 			end
-		elseif self.CompliSoundImpulse.Magnitude > 7 then
+		elseif self.CompliSoundImpulse.Magnitude > 3 then
 			self.CompliSoundHitTimer:Reset();
 			self.CompliSoundHitDelay = self.CompliSoundHitDelay + 150;
 			if terrainID ~= 0 then -- 0 = air

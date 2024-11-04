@@ -1,6 +1,6 @@
 -- Usage notes:
 
--- self.CompliSoundActorIsSprinting set to true will use Sprint instead of Walk sounds. It's up to you to keep track of it.
+-- self.CompliSoundActorSprinting set to true will use Sprint instead of Walk sounds. It's up to you to keep track of it.
 -- You can set specific impact thresholds using self.CompliSoundActorImpactLightThreshold and self.CompliSoundActorImpactHeavyThreshold in a Lua file preceding this one.
 -- To play jump sounds, set self.CompliSoundActorPlayJumpSound to true for one frame. Terrain detection will be done automatically, and it will make landing sounds more consistent.
 
@@ -140,7 +140,7 @@ function OnStride(self)
 				terrainID = 177; -- Default to concrete
 			end
 		
-			if self.CompliSoundActorIsSprinting then
+			if self.CompliSoundActorSprinting then
 				if self.CompliSoundActorTerrainSounds.Sprint[CompliSoundTerrainIDs[terrainID]] ~= nil then
 					self.CompliSoundActorTerrainSounds.Sprint[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
@@ -162,8 +162,8 @@ function OnCollideWithTerrain(self, terrainID)
 	if CompliSoundTerrainIDs[terrainID] == nil then
 		terrainID = 177; -- Default to concrete
 	end
-	if self.CompliSoundActorImpactSoundTimer:IsPastSimMS(self.CompliSoundActorImpactSoundCooldown) and not self.CompliSoundActorIsSprinting then
-		if self.CompliSoundActorCrouching and self.CompliSoundActorMoving and not self.CompliSoundProneSoundPlayed then
+	if self.CompliSoundActorImpactSoundTimer:IsPastSimMS(self.CompliSoundActorImpactSoundCooldown) and not self.CompliSoundActorSprinting then
+		if self.CompliSoundActorProning and not self.CompliSoundProneSoundPlayed then
 			self.CompliSoundProneSoundPlayed = true;
 			if self.CompliSoundActorTerrainSounds.Prone[CompliSoundTerrainIDs[terrainID]] ~= nil then
 				self.CompliSoundActorTerrainSounds.Prone[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
@@ -185,11 +185,16 @@ function ThreadedUpdate(self)
 		for terrain, soundContainer in pairs(soundTable) do
 			soundContainer.Pos = self.Pos;
 			soundContainer.Volume = self.CompliSoundActorTerrainSoundDefaultVolumeOverride
+			if self.CompliSoundActorCrouching then
+				soundContainer.Volume = soundContainer.Volume * 0.6;
+			end
 		end
 	end
 
 	local controller = self:GetController();
-	self.CompliSoundActorCrouching = controller:IsState(Controller.BODY_CROUCH)
+	self.CompliSoundActorCrouching = controller:IsState(Controller.BODY_WALKCROUCH)
+	self.CompliSoundActorProning = controller:IsState(Controller.BODY_PRONE)
+	self.CompliSoundActorSprinting = self.MovementState == Actor.RUN;
 	self.CompliSoundActorMoving = controller:IsState(Controller.MOVE_LEFT) or controller:IsState(Controller.MOVE_RIGHT);
 	
 	local lastSteppedTerrainID;
@@ -291,9 +296,9 @@ function ThreadedUpdate(self)
 		end
 	end
 	
-	if not (self.CompliSoundActorCrouching) and self.CompliSoundProneSoundPlayed then
+	if not (self.CompliSoundActorProning) and self.CompliSoundProneSoundPlayed then
 		self.CompliSoundProneSoundPlayed = false;
-	elseif self.CompliSoundActorCrouching and self.CompliSoundActorMoving and self.CompliSoundProneSoundPlayed and not self.CompliSoundActorIsSprinting then
+	elseif self.CompliSoundActorProning and self.CompliSoundActorMoving and self.CompliSoundProneSoundPlayed and not self.CompliSoundActorSprinting then
 		if self.CompliSoundActorMoveSoundTimer:IsPastSimMS(800) then
 			local pos = Vector(0, 0);
 			SceneMan:CastObstacleRay(self.Pos, Vector(0, 20), pos, Vector(0, 0), self.ID, self.Team, 0, 2);				

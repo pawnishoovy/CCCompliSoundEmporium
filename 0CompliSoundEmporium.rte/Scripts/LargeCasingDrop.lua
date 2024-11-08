@@ -20,6 +20,7 @@ function Create(self)
 	self.CompliSoundCasingDropHits = 0;
 	self.CompliSoundCasingDropRolls = 0;
 	
+	self.CompliSoundImpulse = Vector(25, 25); -- Simulate coming out of the gun at speed for instant terrain collisions
 	self.CompliSoundLastVel = self.Vel;
 end
 

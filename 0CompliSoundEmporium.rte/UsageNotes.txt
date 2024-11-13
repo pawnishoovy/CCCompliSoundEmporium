@@ -27,3 +27,16 @@ About scripts:
 
 Pathing to the scripts directly is fine and simple. If you find they don't work as expected, check inside the script itself
 for any relevant instructions.
+
+About sound priority:
+
+Some proposed values:
+
+1: Absolute mission critical
+25: Ought be heard every time it plays
+75: Important
+100: More important than average
+128: Default
+150: Less important than average
+175: Flavor audio - not important
+200: Should make room for anything else that plays

@@ -831,8 +831,6 @@ function ThreadedUpdate(self)
 			self.SharpStanceOffset = Vector(self.HEATOriginalSharpStanceOffset.X, self.HEATOriginalSharpStanceOffset.Y) + stance
 		end
 	end
-	
-	print(self.BaseReloadTime)
 end
 
 function OnSave(self)

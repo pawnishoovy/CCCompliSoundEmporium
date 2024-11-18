@@ -28,6 +28,7 @@ About scripts:
 Pathing to the scripts directly is fine and simple. If you find they don't work as expected, check inside the script itself
 for any relevant instructions.
 
+
 About sound priority:
 
 Some proposed values:

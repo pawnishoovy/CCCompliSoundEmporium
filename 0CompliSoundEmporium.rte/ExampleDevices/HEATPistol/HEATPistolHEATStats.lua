@@ -275,9 +275,9 @@ function Create(self)
 	reloadPhase.prepareSoundLength = 220;
 	reloadPhase.afterSound = CreateSoundContainer("Bolt Back CompliSoundEmporium HEATPistol", "0CompliSoundEmporium.rte");
 	reloadPhase.afterDelay = 150;
-	reloadPhase.reloadStanceOffsetTarget = Vector(-3, -3);
+	reloadPhase.reloadStanceOffsetTarget = Vector(0, -3);
 	reloadPhase.reloadSupportOffsetSpeed = 16;
-	reloadPhase.reloadSupportOffsetTarget = Vector(-4, -5)
+	reloadPhase.reloadSupportOffsetTarget = Vector(2, -5)
 	reloadPhase.rotationTarget = 45;
 	reloadPhase.angVel = -15;
 	reloadPhase.horizontalAnim = 0;
@@ -298,7 +298,7 @@ function Create(self)
 		
 	end
 	reloadPhase.finishCallback = function (self)
-		
+		self.HEATCurrentReloadPhaseData.reloadSupportOffsetTarget = Vector(-4, -5);
 	end
 	reloadPhase.exitPhaseCallback = function (self)
 		
@@ -321,7 +321,7 @@ function Create(self)
 	reloadPhase.afterDelay = 200;
 	reloadPhase.reloadStanceOffsetTarget = Vector(0, 0);
 	reloadPhase.reloadSupportOffsetSpeed = 16;
-	reloadPhase.reloadSupportOffsetTarget = Vector(-7, -5)
+	reloadPhase.reloadSupportOffsetTarget = Vector(-4, -5)
 	reloadPhase.rotationTarget = 30;
 	reloadPhase.angVel = 35;
 	reloadPhase.horizontalAnim = 0;

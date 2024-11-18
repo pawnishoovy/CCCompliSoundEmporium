@@ -66,7 +66,7 @@ function Create(self)
 	
 	-- Data to feed into the ParticleUtility. Read the ParticleUtility itself for information on these properties.
 	self.HEATParticleUtilityFiringSmokeDataTable = {};
-	self.HEATParticleUtilityFiringSmokeDataTable.Power = 15;
+	self.HEATParticleUtilityFiringSmokeDataTable.Power = 35;
 	self.HEATParticleUtilityFiringSmokeDataTable.Spread = 15;
 	self.HEATParticleUtilityFiringSmokeDataTable.SmokeMult = 1.0;
 	self.HEATParticleUtilityFiringSmokeDataTable.ExploMult = 1.0;
@@ -154,22 +154,22 @@ function Create(self)
 	-- SoundContainer to play while preparing to finish this phase.
 	reloadPhase.prepareSound = CreateSoundContainer("Mag Out Prepare CompliSoundEmporium HEATPistol", "0CompliSoundEmporium.rte");
 	-- Time it takes to finish this phase.
-	reloadPhase.prepareDelay = 100;
+	reloadPhase.prepareDelay = 200;
 	-- Time before finishing that the prepareSound will play. You can line up short prepareSounds with long prepareDelays
 	-- this way.
-	reloadPhase.prepareSoundLength = 140;
+	reloadPhase.prepareSoundLength = 100;
 	-- Sound upon finishing the phase.
 	reloadPhase.afterSound = CreateSoundContainer("Mag Out CompliSoundEmporium HEATPistol", "0CompliSoundEmporium.rte");
 	-- Time after finishing the phase before the reload is progressed.
 	reloadPhase.afterDelay = 200;
 	-- Absolute StanceOffset to set when in this phase.
-	reloadPhase.reloadStanceOffsetTarget = Vector(5, -2);
+	reloadPhase.reloadStanceOffsetTarget = Vector(0, 0);
 	-- Speed at which SupportOffset moves when in this phase.
 	reloadPhase.reloadSupportOffsetSpeed = 16;
 	-- Absolute SupportOffset to set when in this phase. Note that low Speed can make this not be reached within the phase's lifetime.
 	reloadPhase.reloadSupportOffsetTarget = Vector(-4, 5)
 	-- Rotation to set in this phase.
-	reloadPhase.rotationTarget = 25;
+	reloadPhase.rotationTarget = 5;
 	-- Strength of the rotational "kick" animation to do when this phase is finished.
 	reloadPhase.angVel = 2;
 	-- Strength of the horizontal "kick" animation to do when this phase is finished.
@@ -227,9 +227,9 @@ function Create(self)
 	reloadPhase.prepareSoundLength = 550;
 	reloadPhase.afterSound = CreateSoundContainer("Mag In CompliSoundEmporium HEATPistol", "0CompliSoundEmporium.rte");
 	reloadPhase.afterDelay = 200;
-	reloadPhase.reloadStanceOffsetTarget = Vector(0, 0);
+	reloadPhase.reloadStanceOffsetTarget = Vector(-1, 0);
 	reloadPhase.reloadSupportOffsetSpeed = 16;
-	reloadPhase.reloadSupportOffsetTarget = Vector(-4, 8)
+	reloadPhase.reloadSupportOffsetTarget = Vector(-13, 7)
 	reloadPhase.rotationTarget = 20;
 	reloadPhase.angVel = -2;
 	reloadPhase.horizontalAnim = 0;
@@ -247,7 +247,11 @@ function Create(self)
 		
 	end
 	reloadPhase.constantCallback = function (self)
-		
+		if self.HEATReloadTimer:IsPastSimMS(self.HEATCurrentReloadPhaseData.prepareDelay) then
+			self.HEATCurrentReloadPhaseData.reloadSupportOffsetTarget = Vector(-4, 5);
+		elseif self.HEATReloadTimer:IsPastSimMS(self.HEATCurrentReloadPhaseData.prepareDelay / 2) then
+			self.HEATCurrentReloadPhaseData.reloadSupportOffsetTarget = Vector(-4, 7);
+		end
 	end
 	reloadPhase.finishCallback = function (self)
 		
@@ -271,10 +275,10 @@ function Create(self)
 	reloadPhase.prepareSoundLength = 220;
 	reloadPhase.afterSound = CreateSoundContainer("Bolt Back CompliSoundEmporium HEATPistol", "0CompliSoundEmporium.rte");
 	reloadPhase.afterDelay = 150;
-	reloadPhase.reloadStanceOffsetTarget = Vector(4, -2);
+	reloadPhase.reloadStanceOffsetTarget = Vector(-3, -3);
 	reloadPhase.reloadSupportOffsetSpeed = 16;
 	reloadPhase.reloadSupportOffsetTarget = Vector(-4, -5)
-	reloadPhase.rotationTarget = 30;
+	reloadPhase.rotationTarget = 45;
 	reloadPhase.angVel = -15;
 	reloadPhase.horizontalAnim = 0;
 	reloadPhase.verticalAnim = 0;
@@ -338,7 +342,8 @@ function Create(self)
 		
 	end
 	reloadPhase.finishCallback = function (self)
-		
+		self.HEATCurrentReloadPhaseData.reloadSupportOffsetTarget = Vector(-4, 5);
+		self.HEATCurrentReloadPhaseData.rotationTarget = 0;
 	end
 	reloadPhase.exitPhaseCallback = function (self)
 		
@@ -363,7 +368,7 @@ function Create(self)
 	self.HEATRecoilAngVariation = 0.2;
 	
 	-- Strength of the recoil when firing. Affects rotation and SharpLength kickback.
-	self.HEATRecoilStrength = 10
+	self.HEATRecoilStrength = 35
 	-- Some sort of mathemagical strength value to affect the recoil.
 	self.HEATRecoilPowStrength = 0.2
 	-- Upper end of a random multiplier applied to the recoil. 1 is the lower end.
@@ -372,7 +377,7 @@ function Create(self)
 	self.HEATRecoilDamping = 0.8
 	
 	-- Maximum rotation in degrees the recoil can cause.
-	self.HEATRecoilMax = 4
+	self.HEATRecoilMax = 10
 	-- Maximum low value for SharpLength as a multiplier.
 	self.HEATSharpLengthMinimumMult = 0.6;
 	-- Multiplier for recoil strength when proning.

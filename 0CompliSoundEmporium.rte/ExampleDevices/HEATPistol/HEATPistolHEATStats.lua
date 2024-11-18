@@ -119,6 +119,8 @@ function Create(self)
 	-- Override for the ReloadTime when reloading from empty.
 	-- Autocalculated using all phases if nil here. Relevant only for the progress bar.
 	self.HEATTotalEmptyReloadTimeOverride = nil;
+	-- Whether to ignore all notions of making ReloadTime line up and use the progress bar as a fancy sine animation instead.
+	self.HEATUseReloadTimeAnimation = false;
 	
 	-- Casing object to spawn on phases with spawnCasing.
 	self.HEATCasing = nil;

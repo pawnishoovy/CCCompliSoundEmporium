@@ -123,23 +123,23 @@ function Create(self)
 	self.HEATTotalEmptyReloadTime = self.HEATTotalEmptyReloadTimeOverride or nil;
 	-- If there weren't any Overrides set in the Stats, then autocalculate best guesses.
 	if not self.HEATTotalFullReloadTime then
-		-- I know 50 here is super arbitrary, but having it at 0 or 1 has the game sometimes manage to prematurely end a reload. The autocalculation isn't perfect.
+		-- I know 75 here is super arbitrary, but having it at 0 or 1 has the game sometimes manage to prematurely end a reload. The autocalculation isn't perfect.
 		-- This is just a safety buffer.
-		local totalFullTime = 50;
+		local totalFullTime = 75;
 		for i = 1, #self.HEATReloadPhases do
 			totalFullTime = totalFullTime + self.HEATReloadPhases[i].prepareDelay + self.HEATReloadPhases[i].afterDelay;
 			if self.HEATReloadPhases[i].endIfNotEmptyReload then
 				break;
 			end
 		end
-		self.HEATTotalFullReloadTime = totalFullTime + 1;
+		self.HEATTotalFullReloadTime = totalFullTime;
 	end
 	if not self.HEATTotalEmptyReloadTime then
-		local totalEmptyTime = 50;
+		local totalEmptyTime = 75;
 		for i = 1, #self.HEATReloadPhases do
 			totalEmptyTime = totalEmptyTime + self.HEATReloadPhases[i].prepareDelay + self.HEATReloadPhases[i].afterDelay;
 		end	
-		self.HEATTotalEmptyReloadTime = totalEmptyTime + 1;
+		self.HEATTotalEmptyReloadTime = totalEmptyTime;
 	end
 	self.BaseReloadTime = self.HEATTotalFullReloadTime;
 	-- Function to end an ongoing reload and reset values. Here to avoid dupe code.
@@ -380,10 +380,12 @@ function ThreadedUpdate(self)
 				end				
 			end
 			
-			if self.HEATWasInterrupted then
+			if self:IsReloading() and self.HEATUseReloadTimeAnimation then
+				self.BaseReloadTime = math.max(32, (self.ReloadProgress * self.ReloadTime) / (0.5 - 0.3 * math.sin(self.ReloadProgress * self.ReloadTime / 1000 * 0.8 * math.pi)));
+			elseif self.HEATWasInterrupted then
 				self.HEATWasInterrupted = false;
 				-- Autocalculate best guesses again so we can keep it accurate
-				local totalTime = 50;
+				local totalTime = 75;
 				if self.HEATEmptyReload and not self.HEATTotalEmptyReloadTimeOverride then
 					for i = self.HEATCurrentReloadPhase, #self.HEATReloadPhases do
 						totalTime = totalTime + self.HEATReloadPhases[i].prepareDelay + self.HEATReloadPhases[i].afterDelay;
@@ -829,6 +831,8 @@ function ThreadedUpdate(self)
 			self.SharpStanceOffset = Vector(self.HEATOriginalSharpStanceOffset.X, self.HEATOriginalSharpStanceOffset.Y) + stance
 		end
 	end
+	
+	print(self.BaseReloadTime)
 end
 
 function OnSave(self)

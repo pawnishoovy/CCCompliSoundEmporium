@@ -758,12 +758,8 @@ function ThreadedUpdate(self)
 	
 	-- Animation
 	if self.HEATParent then
-		self.HEATHorizontalAnim = math.floor(self.HEATHorizontalAnim / (1 + TimerMan.DeltaTimeSecs * 24.0) * 1000) / 1000
-		self.HEATVerticalAnim = math.floor(self.HEATVerticalAnim / (1 + TimerMan.DeltaTimeSecs * 15.0) * 1000) / 1000
 		
-		local stance = Vector()
-		stance = stance + Vector(-1,0) * self.HEATHorizontalAnim -- Horizontal animation
-		stance = stance + Vector(0,5) * self.HEATVerticalAnim -- Vertical animation
+		-- Rotation
 		
 		self.HEATRotationTarget = self.HEATRotationTargetOverride or self.HEATRotationTarget;
 		self.HEATRotationTarget = self.HEATRotationTarget - (self.HEATAngVel * 4) + self.HEATRotationTargetManualAddition;
@@ -803,23 +799,24 @@ function ThreadedUpdate(self)
 		end
 		
 		self.HEATRotation = (self.HEATRotation + self.HEATRotationTarget * TimerMan.DeltaTimeSecs * self.HEATRotationSpeed) / (1 + TimerMan.DeltaTimeSecs * self.HEATRotationSpeed)
+		local total = math.rad(self.HEATRotation) * self.FlipFactor
+		
+		self.InheritedRotAngleOffset = total * self.FlipFactor;
+		self:SetNumberValue("HEAT_CurrentRecoil", total);
+		
+		-- Offsets
 		if self:IsReloading() or self.HEATNonReloadStaging then
 			self.SupportOffset = self.SupportOffset + ((self.HEATReloadSupportOffsetTarget - self.SupportOffset) * TimerMan.DeltaTimeSecs * self.HEATReloadSupportOffsetSpeed)
 		else
 			self.SupportOffset = self.HEATOriginalSupportOffset;
 		end
-		local total = math.rad(self.HEATRotation) * self.FlipFactor
 		
-		self.InheritedRotAngleOffset = total * self.FlipFactor;
-		self:SetNumberValue("HEAT_CurrentRecoil", total);
-		-- self.RotAngle = self.RotAngle + total;
-		-- self:SetNumberValue("MagRotation", total);
+		self.HEATHorizontalAnim = math.floor(self.HEATHorizontalAnim / (1 + TimerMan.DeltaTimeSecs * 24.0) * 1000) / 1000
+		self.HEATVerticalAnim = math.floor(self.HEATVerticalAnim / (1 + TimerMan.DeltaTimeSecs * 15.0) * 1000) / 1000
 		
-		-- local jointOffset = Vector(self.JointOffset.X * self.FlipFactor, self.JointOffset.Y):RadRotate(self.RotAngle);
-		-- local offsetTotal = Vector(jointOffset.X, jointOffset.Y):RadRotate(-total) - jointOffset
-		-- self.Pos = self.Pos + offsetTotal;
-		-- self:SetNumberValue("MagOffsetX", offsetTotal.X);
-		-- self:SetNumberValue("MagOffsetY", offsetTotal.Y);
+		local stance = Vector()
+		stance = stance + Vector(-1,0) * self.HEATHorizontalAnim -- Horizontal animation
+		stance = stance + Vector(0,5) * self.HEATVerticalAnim -- Vertical animation
 		
 		if self.HEATReloadStanceOffsetTarget then
 			self.HEATReloadStanceOffset = self.HEATReloadStanceOffset + ((self.HEATReloadStanceOffsetTarget - self.HEATReloadStanceOffset) * TimerMan.DeltaTimeSecs * 2.5)

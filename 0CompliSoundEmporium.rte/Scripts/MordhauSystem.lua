@@ -3,14 +3,18 @@ require("MasterTerrainIDList")
 function OnMessage(self, message, object)
 	if message == "Mordhau_ReceiveBlockableAttack" then
 		if self.CurrentPhaseData then
-			if self.CurrentPhaseData.blocksAttacks then
-				MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", "Blocked");
-				self.BlockFunction(self, object.attackType, object.hitPos);
-			elseif self.CurrentPhaseData.parriesAttacks then
+			if self.CurrentPhaseData.parriesAttacks then
 				MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", "Parried");
 				self.BlockFunction(self, object.attackType, object.hitPos);
+				self.CurrentPhaseData.canBeBlockCancelled = true;
 				self.CurrentPhaseData.allowsPhaseSetBuffering = true;
 				self.CurrentPhaseData.canComboOut = true;
+				self:SetNumberValue("Mordhau_AIParriedAnAttack", 1);				
+			elseif self.CurrentPhaseData.blocksAttacks then
+				MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", "Blocked");
+				self.BlockFunction(self, object.attackType, object.hitPos);
+				self:SetNumberValue("Mordhau_AIBlockedAnAttack", 1);
+				self.DoBlockAnim = true;
 			end
 		end
 	elseif message == "Mordhau_MessageReturn_BlockResponse" then
@@ -23,6 +27,15 @@ function OnMessage(self, message, object)
 				self.PlayingPhaseSet = false;
 			end
 		end
+	elseif message == "Mordhau_AIRequestWeaponInfo" then
+		if self.Parent then
+			messageTable = {};
+			messageTable.validAttackPhaseSets = self.ValidAIAttackPhaseSets;
+			messageTable.allPhaseSets = self.PhaseSets;
+			self.Parent:SendMessage("Mordhau_AIWeaponInfoResponse", messageTable);
+		else
+			-- who the hell sent us the message?
+		end
 	end
 end
 
@@ -34,11 +47,26 @@ function playPhaseSet(self, name)
 		self.PlayingPhaseSet = true;
 		self.PhaseTimer:Reset();
 		
+		-- Values for AI to work with
+		local phaseSet = getPhaseSetByName(self, name);
+		if phaseSet.isAttackingPhaseSet then
+			self:SetNumberValue("Mordhau_AIWeaponCurrentlyAttacking", 1);
+			self:SetNumberValue("Mordhau_AIWeaponCurrentRange", phaseSet.AIRange);
+		else
+			self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyAttacking");
+			self:RemoveNumberValue("Mordhau_AIWeaponCurrentRange");
+		end
+		
+		-- Clear AI values
+		self:RemoveNumberValue("Mordhau_AIBlockedAnAttack");
+		self:RemoveNumberValue("Mordhau_AIParriedAnAttack");
+	
 		self.MessageReturn_BlockResponse = false;
 		self.PhaseSetWasBlocked = false;
 		self.PhaseSetWasParried = false;
 		self.PhaseSetWasInterruptedByTerrain = false;
 		self.WeaponIDToIgnore = nil;
+		self.HFlipSwitches = 0;
 		self.HitMOTable = {};
 	else
 		print("ERROR: MordhauSystem could not find PhaseSet it was asked to play of name " .. name);
@@ -164,6 +192,12 @@ function Create(self)
 	----------------- Melee
 	-----------------
 	
+	self.EffectiveWoundCount = self:NumberValueExists("Mordhau_EffectiveWoundCount") and self:GetNumberValue("Mordhau_EffectiveWoundCount") or self.WoundCount;
+	
+	self.GibWoundLimit = 999;
+	
+	self.LastWoundCount = self.WoundCount;
+	
 	self.FlinchCooldownTimer = Timer();
 	
 	self.ParryCooldownTimer = Timer();
@@ -183,6 +217,8 @@ function Create(self)
 	self.CurrentPhase = 1;
 	
 	self.BufferedPhaseSet = nil;
+	
+	self.HFlipSwitches = 0;
 	
 	-----------------
 	----------------- Animation
@@ -207,24 +243,81 @@ function Create(self)
 	self.StanceOffsetSpeed = 15;
 	self.StanceOffsetTarget = self.OriginalStanceOffset;
 	
+	-- Normal creation has OnAttach happen properly, but reloading scripts clears the Lua state (and thus the parent) without running OnAttach again, but this will run and fix it
+	local rootParent = self:GetRootParent();
+	if IsAHuman(rootParent) then
+		self.Parent = ToAHuman(rootParent);
+		self.ParentController = self.Parent:GetController();
+		if not self.Parent:HasScript("0CompliSoundEmporium.rte/Scripts/MordhauMeleeAI.lua") then
+			self.Parent:AddScript("0CompliSoundEmporium.rte/Scripts/MordhauMeleeAI.lua");
+		end
+	end
 end
 
 function OnAttach(self, newParent)
 	if IsAHuman(newParent:GetRootParent()) then
 		self.Parent = ToAHuman(newParent:GetRootParent());
 		self.ParentController = self.Parent:GetController();
+		if not self.Parent:HasScript("0CompliSoundEmporium.rte/Scripts/MordhauMeleeAI.lua") then
+			self.Parent:AddScript("0CompliSoundEmporium.rte/Scripts/MordhauMeleeAI.lua");
+		end
+		
+		if not self.EquippedOffTheGround then
+			playPhaseSet(self, self.EquipPhaseSetName);
+		end
 	end
 end
 
 function OnDetach(self)
+	-- TODO: not this
+	self.HUDVisible = false;
+
+	self.Frame = self.IdleFrame;
 	self.Parent = nil;
 	self.ParentController = nil;
+	
+	self.PlayingPhaseSet = false;
+	self.CurrentPhaseData = nil;
+	
+	-- Clear AI values, just in case
+	
+	self:RemoveNumberValue("Mordhau_AIBlockInput");
+	self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyAttacking");
+	self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyBlockable");
+	self:RemoveNumberValue("Mordhau_AIWeaponCurrentRange");
+	self:RemoveNumberValue("Mordhau_AIBlockedAnAttack");
+	self:RemoveNumberValue("Mordhau_AIParriedAnAttack");		
 end
 
 function ThreadedUpdate(self)
 	self.AngVel = 0;
 	self.HorizontalAnim = 0;
 	self.VerticalAnim = 0;
+	
+	if self.DoBlockAnim then
+		self.DoBlockAnim = false;
+		self.AngVel = self.BlockAngVel;
+		self.HorizontalAnim = -1;
+	end
+
+	if self.PlayingPhaseSet and self.CanParryBullets and self.CurrentPhaseData and self.CurrentPhaseData.parriesAttacks then
+		-- Ignore incoming wounds, play parry sound for every parried bullet if applicable
+		if self.WoundCount > self.LastWoundCount then
+			if self.BlockSFX.ParryAdd then
+				self.BlockSFX.ParryAdd:Play(self.Pos);
+			end
+			self.CurrentPhaseData.canBeBlockCancelled = true;
+			self.CurrentPhaseData.allowsPhaseSetBuffering = true;
+			self.CurrentPhaseData.canComboOut = true;
+			self.AngVel = self.BlockAngVel;
+		end
+	else
+		if self.WoundCount > self.LastWoundCount then
+			self.EffectiveWoundCount = self.EffectiveWoundCount + (self.WoundCount - self.LastWoundCount);
+			self.AngVel = self.BlockAngVel;
+			self.HorizontalAnim = -1;
+		end
+	end
 
 	if self.Parent then
 		local isPlayerControlled = self.Parent:IsPlayerControlled();
@@ -237,16 +330,33 @@ function ThreadedUpdate(self)
 		local reloadInput = self.ParentController:IsState(Controller.WEAPON_RELOAD) 
 		local heldReloadInput = isPlayerControlled and self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet and UInputMan:KeyHeld(Key.R);
 		
+		local aiAttackPhaseSetName;
+		if self:StringValueExists("Mordhau_AIAttackPhaseSetInput") then
+			aiAttackPhaseSetName = self:GetStringValue("Mordhau_AIAttackPhaseSetInput");
+			self:RemoveStringValue("Mordhau_AIAttackPhaseSetInput");
+		end
+		
+		if self:NumberValueExists("Mordhau_AIBlockInput") and not isPlayerControlled then
+			heldReloadInput = true;
+		end
+		
 		-- TODO: real AI
 		if primaryInput and not isPlayerControlled then
-			if math.random(0, 100) > 50 then
+			if math.random(0, 100) > 66 then
 				primaryHotkeyInput = true;
+				primaryInput = false;
+			elseif math.random(0, 100) < 33 then
+				auxiliaryHotkeyInput = true;
 				primaryInput = false;
 			end
 		end
 	
 		-- Phase handling
-		if self.PlayingPhaseSet then
+		if self.PlayingPhaseSet then	
+			if self.HFlipped ~= self.LastHFlipped then
+				self.HFlipSwitches = self.HFlipSwitches + 1;
+			end
+		
 			-- Copy phase data to work with
 			if not self.CurrentPhaseData then
 				self.CurrentPhaseEndSoundPlayed = false;
@@ -259,14 +369,16 @@ function ThreadedUpdate(self)
 				end
 				if self.DebugInfo then
 					print("MordhauSystem: Weapon " .. self.PresetName .. " entered melee phase " .. self.CurrentPhase .. " named " .. self.CurrentPhaseData.Name .. " from phase set " .. self.PhaseSets[self.CurrentPhaseSet].Name);
-				end		
+				end
+				-- Reset WasInterruptedByTerrain if this phase Cleaves, otherwise turn off damage
 				if self.PhaseSetWasInterruptedByTerrain then
 					if self.CurrentPhaseData.Cleaves then
 						self.PhaseSetWasInterruptedByTerrain = false;
 					else
 						self.CurrentPhaseData.doesDamage = false;
 					end
-				end				
+				end
+				-- Allow blocking for all phases of a PhaseSet if we hit anything
 				if self.PhaseSetWasBlocked or self.PhaseSetWasInterruptedByTerrain then
 					self.CurrentPhaseData.canBeBlockCancelled = true;
 				end
@@ -327,68 +439,87 @@ function ThreadedUpdate(self)
 				if auxiliaryHotkeyInput then
 					self.BufferedPhaseSet = self.AuxiliaryHotkeyInputPhaseSetName;
 				end
+				if aiAttackPhaseSetName then
+					self.BufferedPhaseSet = aiAttackPhaseSetName;
+				end
 			else
 				self.BufferedPhaseSet = false;
 			end
+			
 				
 			-- Collision logic
-			local foundValidMO;
-			if self.CurrentPhaseData.canBeBlocked or self.CurrentPhaseData.doesDamage and not self.PhaseSetWasBlocked then		
-				local vecBetweenRays = (self.CurrentPhaseData.rayVecSecondPos - self.CurrentPhaseData.rayVecFirstPos) / self.CurrentPhaseData.rayDensity;
-				local rayPos = self.CurrentPhaseData.rayVecFirstPos;
+			-- Disable collision altogether if we aren't Cleaves == true and we've already hit someone
+			local wasCollidable = false;
+			if self.CurrentPhaseData.Cleaves or not next(self.HitMOTable) then
+				if self.CurrentPhaseData.canBeBlocked or self.CurrentPhaseData.doesDamage and not self.PhaseSetWasBlocked then	
+					wasCollidable  = true;				
+					self:SetNumberValue("Mordhau_AIWeaponCurrentlyBlockable", 1);
+					local vecBetweenRays = (self.CurrentPhaseData.rayVecSecondPos - self.CurrentPhaseData.rayVecFirstPos) / self.CurrentPhaseData.rayDensity;
+					local rayPos = self.CurrentPhaseData.rayVecFirstPos;
+					
+					for i = 1, self.CurrentPhaseData.rayDensity do
+						local rayVec = Vector(self.CurrentPhaseData.rayRange * self.FlipFactor, 0):RadRotate(self.RotAngle):DegRotate(self.CurrentPhaseData.rayAngle*self.FlipFactor)
+						local rayOrigin = Vector(self.Pos.X, self.Pos.Y) + Vector(rayPos.X * self.FlipFactor, rayPos.Y):RadRotate(self.RotAngle)
 				
-				for i = 1, self.CurrentPhaseData.rayDensity do
-					local rayVec = Vector(self.CurrentPhaseData.rayRange * self.FlipFactor, 0):RadRotate(self.RotAngle):DegRotate(self.CurrentPhaseData.rayAngle*self.FlipFactor)
-					local rayOrigin = Vector(self.Pos.X, self.Pos.Y) + Vector(rayPos.X * self.FlipFactor, rayPos.Y):RadRotate(self.RotAngle)
-			
-					if self.DebugInfo then
-						PrimitiveMan:DrawLinePrimitive(rayOrigin, rayOrigin + rayVec,  5);
-					end
-				
-					local moCheck = SceneMan:CastMORay(rayOrigin, rayVec, self.WeaponIDToIgnore or self.RootID, self.Team, 0, false, 1); -- Raycast
-					if moCheck ~= rte.NoMOID then
-						local mo = MovableMan:GetMOFromID(moCheck);
-						self.LastHitTargetUniqueID = mo.UniqueID;
-						self.LastHitTargetPosition = SceneMan:GetLastRayHitPos();
-						
-						self:RequestSyncedUpdate();
-					elseif not self.PhaseSetWasInterruptedByTerrain then -- After checking for MOs, check for terrain
-						local terrCheck = SceneMan:CastMaxStrengthRay(rayOrigin, rayOrigin + (rayVec * self.CurrentPhaseData.rayTerrainRangeMultiplier), 1);
-						if terrCheck > 5 then
-							self.LastHitTerrainPosition = SceneMan:GetLastRayHitPos();
-							local terrainID = SceneMan:GetTerrMatter(self.LastHitTerrainPosition.X, self.LastHitTerrainPosition.Y);
-							if terrainID ~= 0 then -- 0 = air		
-								if self.CurrentPhaseData.isInterruptableByTerrain then
-									if self.HitSFX[CompliSoundTerrainIDs[terrainID]] ~= nil then
-										self.HitSFX[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
-									elseif self.HitSFX.Default then
-										self.HitSFX.Default:Play(self.Pos);
-									end
-									if self.HitGFX[CompliSoundTerrainIDs[terrainID]] ~= nil then
-										local effect = self.HitGFX[CompliSoundTerrainIDs[terrainID]]:Clone();
-										effect.Pos = self.LastHitTerrainPosition;
-										MovableMan:AddParticle(effect);
-										effect:GibThis();
-									elseif self.HitSFX.Default then
-										local effect = self.HitGFX.Default:Clone();
-										effect.Pos = self.LastHitTerrainPosition;
-										MovableMan:AddParticle(effect);
-										effect:GibThis();
-									end											
-								
-									self.CurrentPhaseData.doesDamage = false;
-									self.CurrentPhaseData.canBeBlockCancelled = true;
+						if self.DebugInfo then
+							PrimitiveMan:DrawLinePrimitive(rayOrigin, rayOrigin + rayVec,  5);
+						end
+					
+						local moCheck = SceneMan:CastMORay(rayOrigin, rayVec, self.WeaponIDToIgnore or self.RootID, self.Team, 0, false, 1); -- Raycast
+						if moCheck ~= rte.NoMOID then
+							local mo = MovableMan:GetMOFromID(moCheck);
+							self.LastHitTargetUniqueID = mo.UniqueID;
+							self.LastHitTargetPosition = SceneMan:GetLastRayHitPos();
+							
+							-- Prepare to check this collision later this frame
+							self:RequestSyncedUpdate();
+						elseif not self.PhaseSetWasInterruptedByTerrain then -- After checking for MOs, check for terrain
+							local terrCheck = SceneMan:CastMaxStrengthRay(rayOrigin, rayOrigin + (rayVec * self.CurrentPhaseData.rayTerrainRangeMultiplier), 1);
+							if terrCheck > 5 then
+								self.LastHitTerrainPosition = SceneMan:GetLastRayHitPos();
+								local terrainID = SceneMan:GetTerrMatter(self.LastHitTerrainPosition.X, self.LastHitTerrainPosition.Y);
+								if terrainID ~= 0 then -- 0 = air		
+									if self.CurrentPhaseData.isInterruptableByTerrain then
+										if self.HitSFX[CompliSoundTerrainIDs[terrainID]] ~= nil then
+											self.HitSFX[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
+										elseif self.HitSFX.Default then
+											self.HitSFX.Default:Play(self.Pos);
+										end
+										if self.HitGFX[CompliSoundTerrainIDs[terrainID]] ~= nil then
+											local effect = self.HitGFX[CompliSoundTerrainIDs[terrainID]]:Clone();
+											effect.Pos = self.LastHitTerrainPosition;
+											MovableMan:AddParticle(effect);
+											effect:GibThis();
+										elseif self.HitSFX.Default then
+											local effect = self.HitGFX.Default:Clone();
+											effect.Pos = self.LastHitTerrainPosition;
+											MovableMan:AddParticle(effect);
+											effect:GibThis();
+										end											
 									
-									self.PhaseSetWasInterruptedByTerrain = true;
-									break;
+										self.CurrentPhaseData.doesDamage = false;
+										self.CurrentPhaseData.canBeBlockCancelled = true;
+										
+										-- Stop soundStart if applicable	
+										if self.CurrentPhaseData.soundStart and self.CurrentPhaseData.soundStartStopsOnHit and self.CurrentPhaseData.soundStart:IsBeingPlayed() then
+											self.CurrentPhaseData.soundStart:FadeOut(100);
+										end	
+										
+										self.PhaseSetWasInterruptedByTerrain = true;
+										break;
+									end
 								end
 							end
-						end
-					end			
-								
-					rayPos = rayPos + vecBetweenRays;
+						end			
+									
+						rayPos = rayPos + vecBetweenRays;
+					end
 				end
 			end			
+			
+			if not wasCollidable then
+				self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyBlockable");
+			end
 			
 			-- Callback
 			self.CurrentPhaseData.constantCallback(self);
@@ -433,6 +564,24 @@ function ThreadedUpdate(self)
 				
 				self.BufferedPhaseSet = nil
 			end
+			
+			-- Make sure we're not over our HFlipSwitch limit
+			if self.PhaseSets[self.CurrentPhaseSet].HFlipSwitchLimit > -1 then
+				if self.HFlipSwitches > self.PhaseSets[self.CurrentPhaseSet].HFlipSwitchLimit then
+					-- Simulate a flinch
+					self.FlinchCooldownTimer:Reset();
+					self.PlayingPhaseSet = false;
+				end
+			end
+			
+			-- Block bullets if appropriate
+			if self.CanBlockBullets or self.CanParryBullets then 
+				if self.CurrentPhaseData.blocksAttacks or self.CurrentPhaseData.parriesAttacks then
+					self.GetsHitByMOsWhenHeld = true;
+				else
+					self.GetsHitByMOsWhenHeld = false;
+				end
+			end
 
 			-- End logic
 			if self.PhaseTimer:IsPastSimMS(self.CurrentPhaseData.Duration) then	
@@ -459,9 +608,10 @@ function ThreadedUpdate(self)
 					if reloadInput then
 						playPhaseSet(self, self.BlockInputPhaseSetName);
 					end
-				end
+				end			
 			end
 		else
+			self.Frame = self.IdleFrame;
 			self.RotationSpeed = self.IdleRotationSpeed * 60;
 			self.RotationTarget = self.IdleRotation;
 			self.JointOffsetTarget = self.OriginalJointOffset;
@@ -469,20 +619,32 @@ function ThreadedUpdate(self)
 			self.StanceOffsetTarget = Vector(0, 0);
 			
 			if self.FlinchCooldownTimer:IsPastSimMS(self.FlinchCooldown) and self.ParryCooldownTimer:IsPastSimMS(self.ParryCooldown) then
-				if primaryInput then
-					playPhaseSet(self, self.PrimaryInputPhaseSetName);
-				end
-				if primaryHotkeyInput then
-					playPhaseSet(self, self.PrimaryHotkeyInputPhaseSetName);
-				end
-				if auxiliaryHotkeyInput then
-					playPhaseSet(self, self.AuxiliaryHotkeyInputPhaseSetName);
+				-- Player input
+				if isPlayerControlled then
+					if primaryInput then
+						playPhaseSet(self, self.PrimaryInputPhaseSetName);
+					end
+					if primaryHotkeyInput then
+						playPhaseSet(self, self.PrimaryHotkeyInputPhaseSetName);
+					end
+					if auxiliaryHotkeyInput then
+						playPhaseSet(self, self.AuxiliaryHotkeyInputPhaseSetName);
+					end
+				else
+					-- AI inputs via StringValue above
+					if aiAttackPhaseSetName then
+						playPhaseSet(self, aiAttackPhaseSetName);
+					end
 				end
 			end
 			
 			if reloadInput then
 				playPhaseSet(self, self.BlockInputPhaseSetName);
 			end
+			
+			self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyAttacking");
+			self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyBlockable");
+			self:RemoveNumberValue("Mordhau_AIWeaponCurrentRange");
 		end
 		
 		-- Animation
@@ -514,6 +676,19 @@ function ThreadedUpdate(self)
 		self.PlayingPhaseSet = false;
 		self.CurrentPhase = 1;
 	end
+	
+	if self:IsAttached() then
+		self.EquippedOffTheGround = false;
+	else
+		self.EquippedOffTheGround = true;
+	end
+	
+	if self.EffectiveWoundCount >= self.RealGibWoundLimit then
+		self:GibThis();
+	end
+	
+	self.LastWoundCount = self.WoundCount;
+	self.LastHFlipped = self.HFlipped;
 end
 
 function SyncedUpdate(self)
@@ -588,6 +763,7 @@ function SyncedUpdate(self)
 				
 				if IsAHuman(hitTargetRootParent) then
 					local human = ToAHuman(hitTargetRootParent);
+					human:SendMessage("Mordhau_HitFlinch");
 					if human.EquippedItem then
 						human.EquippedItem:SendMessage("Mordhau_HitFlinch");
 					end
@@ -595,7 +771,16 @@ function SyncedUpdate(self)
 						human.EquippedBGItem:SendMessage("Mordhau_HitFlinch");
 					end
 				end
+				
+				-- Stop soundStart if applicable	
+				if self.CurrentPhaseData.soundStart and self.CurrentPhaseData.soundStartStopsOnHit and self.CurrentPhaseData.soundStart:IsBeingPlayed() then
+					self.CurrentPhaseData.soundStart:FadeOut(100);
+				end	
 			end
 		end
 	end
+end
+
+function OnSave(self)
+	self:SetNumberValue("Mordhau_EffectiveWoundCount", self.EffectiveWoundCount);
 end

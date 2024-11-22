@@ -8,6 +8,8 @@ function Create(self)
 	
 	-- Slash (referring to motion, not necessarily sharp strikes)
 	-- Stab (referring to motion, not necessarily piercing strikes)
+	
+	-- "Heavy" anywhere in attackType will play HeavyBlockAdd
 
 	-----------------
 	----------------- General
@@ -34,22 +36,47 @@ function Create(self)
 	----------------- Melee
 	-----------------
 	
+	-- Lockout in MS from doing anything but block input after being flinched by being hit by melee.
+	self.FlinchCooldown = 500;	
+	-- Lockout in MS from doing anything but block input after being parried, on top of Parried Reaction PhaseSet's total time.
+	self.ParryCooldown = 300;
+	
+	-- Maximum blocking stamina. Set to less than 0 to disable the system.
+	-- How much stamina an attack takes to block is 5 * Damage * woundDamageMultiplier.
+	self.BlockStaminaMaximum = 100;
+	-- Multiplier for how much stamina damage is taken from any particular attack.
+	self.BlockStaminaTakenDamageMultiplier = 1.0;	
+	-- At this multiplier times BlockStaminaMaximum, blocking will cease to function or you will be disarmed, depending on the below setting.
+	-- Parries always work.
+	self.BlockStaminaFailureThresholdMultiplier = 0.1;
+	-- Block stamina regeneration rate. Starts after 500ms of not blocking anything. Arbitrary.
+	self.BlockStaminaRegenRate = 5;	
+	-- Multiplier for BlockStaminaRegenRate while actively blocking. You could multiply it to be more for a Sekiro-style deal.
+	self.BlockStaminaBlockingMultiplier = 1.5;
+	-- Multiplier for incoming damage when being hit through an ineffective block.
+	self.BlockStaminaNoStaminaDamageMultiplier = 0.5;
+	-- Raw value to add to stamina when an attack is successfully parried.  You can have it negative here so parries aren't free,
+	-- but mind that this is an absolute value vs the damage-relative one when blocking.
+	self.BlockStaminaParryReward = 0;
+	-- Raw value to add to stamina when an attack is landed on an MO, whether it is blocked, parried, or anything else.
+	self.BlockStaminaHitMOReward = 5;
+	-- Whether to knock this weapon out of the holder's hands if an  attack takes it below the threshold, rather than nullifying the block.
+	-- Note there is a 20% grace amount, i.e. if we are above the threshold and an attack takes us to threshold - 20% max stamina, we are set to
+	-- 0 stamina instead.
+	self.BlockStaminaDisarmInsteadOfNullifyingBlock = true;
+	-- Whether to show weapon stamina above the holder, if player controlled. Recommended on.
+	self.DrawBlockStaminaBar = true;
+	-- Whether to show weapon stamina above the holder for AI as well. Does nothing if DrawBlockStaminaBar isn't on. Recommended off, but it's your call.
+	self.DrawBlockStaminaBarForAI = true;
+	
 	-- Whether phases that can block attacks will also block bullets. If this is true, will turn off bullet collisions when not blocking.
 	-- Leave false if you want MordhauSystem to not touch GetsHitByMOsWhileHeld.
 	self.CanBlockBullets = true;
-	
 	-- If this is true, parried bullets will be nullified and not hurt the weapon. Does not require CanBlockBullets.
 	self.CanParryBullets = true;
-	
 	-- Intended GibWoundLimit. Save/loading coupled with potential wound manipulation can mess up the internal counter, so we need this.
 	-- Note that the "fake" gib wound limit is 999, so your weapon is not nigh invincible (unless you change it yourself)
 	self.RealGibWoundLimit = 25;
-	
-	-- Lockout in MS from doing anything but block input after being flinched by being hit by melee.
-	self.FlinchCooldown = 300;	
-	
-	-- Lockout in MS from doing anything but block input after being parried, on top of Parried Reaction PhaseSet's total time.
-	self.ParryCooldown = 300;
 	
 	-----------------
 	----------------- Animation
@@ -73,12 +100,13 @@ function Create(self)
 	-----------------
 	
 	-- The below is all recommended defaults. What you will likely want to do is change the sounds, and optionally the GFX.
-	-- Nilling anything here is safe and the GFX/SFX simply won't happen if it's non-existent.
+	-- Nilling anything here is safe and the GFX/SFX simply won't happen if it's non-existent, but rather than nilling
+	-- you should simply define duplicates for all of these defaults (unless you rewrite the FX functions yourself).
 	
 	-- This function is predefined in MordhauSystem and runs when hitting a target to decide which GFX and sounds are appropriate.
 	-- It has the signature (self, hitTargetMO, absoluteHitPos) and does both the detecting and the spawning/playing.
 	-- You can override it here and do your own thing if you want.
-	self.HitMOFunction = nil;
+	self.HitMOFXFunction = nil;
 	
 	self.HitGFX = {};
 	
@@ -102,20 +130,28 @@ function Create(self)
 	self.HitSFX.SolidMetal = CreateSoundContainer("CompliSound Mordhau Terrain Hit SolidMetal", "0CompliSoundEmporium.rte");
 	self.HitSFX.BeingBlocked = CreateSoundContainer("Being Blocked CompliSound Mordhau Longsword", "0CompliSoundEmporium.rte");
 	
-	-- Same as HitFunction. Happens on the OnMessage received when querying for being blocked, by default just handles playing BeingBlocked.
-	self.BeingBlockedFunction = nil;
+	-- Same as HitMOFXFunction. Happens on the OnMessage received when querying for being blocked, by default just handles playing BeingBlocked.
+	-- Signature = (self)
+	self.BeingBlockedFXFunction = nil;
+	
+	-- Same as HitMOFXFunction. Happens when blocking an attack, handles Stab/Slash, Heavy, and ParryAdd.
+	-- Signature: (self, string attackType, absoluteHitPos)
+	self.BlockFXFunction = nil;
 	
 	self.BlockGFX = {};
 	self.BlockGFX.BlockSlash = CreateMOSRotating("CompliSound Mordhau Block Slash Effect", "0CompliSoundEmporium.rte");
 	self.BlockGFX.BlockStab = CreateMOSRotating("CompliSound Mordhau Block Stab Effect", "0CompliSoundEmporium.rte");
-	self.BlockGFX.Parry = CreateMOSRotating("CompliSound Mordhau Parry Effect", "0CompliSoundEmporium.rte");
-	self.BlockGFX.HeavyBlock = CreateMOSRotating("CompliSound Mordhau Heavy Block Effect", "0CompliSoundEmporium.rte");
+	self.BlockGFX.ParryAdd = CreateMOSRotating("CompliSound Mordhau Parry Effect", "0CompliSoundEmporium.rte");
+	self.BlockGFX.HeavyBlockAdd = CreateMOSRotating("CompliSound Mordhau Heavy Block Effect", "0CompliSoundEmporium.rte");
 	
 	self.BlockSFX = {};
 	self.BlockSFX.BlockSlash = CreateSoundContainer("Block Slash CompliSound Mordhau Longsword", "0CompliSoundEmporium.rte");
 	self.BlockSFX.BlockStab = CreateSoundContainer("Block Stab CompliSound Mordhau Longsword", "0CompliSoundEmporium.rte");
 	self.BlockSFX.ParryAdd = CreateSoundContainer("Parry Add CompliSound Mordhau Longsword", "0CompliSoundEmporium.rte");
 	self.BlockSFX.HeavyBlockAdd = CreateSoundContainer("Heavy Block Add CompliSound Mordhau Longsword", "0CompliSoundEmporium.rte");
+	
+	-- Sound for being disarmed if it's enabled.
+	self.DisarmSound = CreateSoundContainer("Disarm CompliSound Mordhau Longsword");
 
 	-----------------
 	----------------- Regular inputtable PhaseSets
@@ -176,7 +212,7 @@ function Create(self)
 	phaseSet.HFlipSwitchLimit = 3;
 	-- Roughly how far from its target the AI should try to be when attacking with this PhaseSet. Too high a value here will cause it to miss often.
 	-- Irrelevant for PhaseSets that aren't valid attacks as defined above.
-	phaseSet.AIRange = 30;
+	phaseSet.AIRange = 45;
 	phaseSet.Phases = {};
 	
 	self.PhaseSets[phaseSetIndex] = phaseSet;
@@ -208,6 +244,8 @@ function Create(self)
 	-- Whether trying to play a new PhaseSet during this phase, whether manually or by buffered input, will combo into it or not.
 	-- Recommended to use only on the 'recovery' stages of your PhaseSet so it has a chance to play out even with spammed inputs.
 	Phase.canComboOut = false;
+	-- AI helper parameter. This phase, and all other phases after it, will not be considered as attacks by opposing AI, so they don't block when not in any danger.
+	Phase.isAfterFinalAttackPhase = false;
 	
 	-- Whether this Phase should check for being blocked by blocking melee along its ray vector or not.
 	-- You can check for this separately from checking to damage MOs, for example to let yourself be blocked early
@@ -320,8 +358,9 @@ function Create(self)
 	Phase.canBeBlockCancelled = false;
 	Phase.allowsPhaseSetBuffering = false;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 	
-	Phase.canBeBlocked = false;
+	Phase.canBeBlocked = true;
 	Phase.doesDamage = false;
 	Phase.attackType = "None";
 	Phase.Cleaves = false;
@@ -329,12 +368,12 @@ function Create(self)
 	Phase.Damage = 0.0;
 	Phase.woundDamageMultiplier = 0.0;
 	Phase.dismemberInsteadOfGibbing = false;
-	Phase.rayVecFirstPos = Vector(0, 0);
-	Phase.rayVecSecondPos = Vector(0, 0);
-	Phase.rayDensity = 0;
-	Phase.rayRange = 0;
-	Phase.rayTerrainRangeMultiplier = 0;
-	Phase.rayAngle = 0;
+	Phase.rayVecFirstPos = Vector(-1, 4);
+	Phase.rayVecSecondPos = Vector(1, 4);
+	Phase.rayDensity = 3;
+	Phase.rayRange = 13;
+	Phase.rayTerrainRangeMultiplier = 0.5;
+	Phase.rayAngle = 20;
 	
 	Phase.frameStart = 4;
 	Phase.frameEnd = 7;
@@ -385,21 +424,22 @@ function Create(self)
 	Phase.canBeBlockCancelled = false;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 	
 	Phase.canBeBlocked = true;
 	Phase.doesDamage = true;
 	Phase.attackType = "Slash";
 	Phase.isInterruptableByTerrain = true;
 	Phase.Cleaves = false;
-	Phase.Damage = 4.0;
-	Phase.woundDamageMultiplier = 2.0;
+	Phase.Damage = 1.0;
+	Phase.woundDamageMultiplier = 7.0;
 	Phase.dismemberInsteadOfGibbing = true;
 	Phase.rayVecFirstPos = Vector(-1, 4);
 	Phase.rayVecSecondPos = Vector(1, 4);
 	Phase.rayDensity = 3;
 	Phase.rayRange = 18;
 	Phase.rayTerrainRangeMultiplier = 0.5;
-	Phase.rayAngle = 80;
+	Phase.rayAngle = 65;
 	
 	Phase.frameStart = 7;
 	Phase.frameEnd = 12;
@@ -450,6 +490,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = false;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = true;
 	
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -515,6 +556,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = true;
+	Phase.isAfterFinalAttackPhase = true;
 	
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -580,6 +622,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = true;
+	Phase.isAfterFinalAttackPhase = true;
 	
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -643,7 +686,7 @@ function Create(self)
 	phaseSet.isBlockingPhaseSet = false;
 	phaseSet.isAttackingPhaseSet = true;
 	phaseSet.HFlipSwitchLimit = 3;
-	phaseSet.AIRange = 30;
+	phaseSet.AIRange = 45;
 	phaseSet.Phases = {};
 	
 	self.PhaseSets[phaseSetIndex] = phaseSet;
@@ -662,6 +705,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = false;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -727,6 +771,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = false;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 
 	Phase.canBeBlocked = true;
 	Phase.doesDamage = true;
@@ -736,10 +781,10 @@ function Create(self)
 	Phase.Damage = 2.0;
 	Phase.woundDamageMultiplier = 3.0;
 	Phase.dismemberInsteadOfGibbing = false;
-	Phase.rayVecFirstPos = Vector(-1, 0);
-	Phase.rayVecSecondPos = Vector(1, 0);
+	Phase.rayVecFirstPos = Vector(-1, 5);
+	Phase.rayVecSecondPos = Vector(1, 5);
 	Phase.rayDensity = 3;
-	Phase.rayRange = 17;
+	Phase.rayRange = 22;
 	Phase.rayTerrainRangeMultiplier = 1.0
 	Phase.rayAngle = 90;
 	
@@ -792,6 +837,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = true;
+	Phase.isAfterFinalAttackPhase = true;
 	
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -857,6 +903,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = true;
+	Phase.isAfterFinalAttackPhase = true;
 	
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -920,7 +967,7 @@ function Create(self)
 	phaseSet.isBlockingPhaseSet = false;
 	phaseSet.isAttackingPhaseSet = true;
 	phaseSet.HFlipSwitchLimit = 3;
-	phaseSet.AIRange = 25;
+	phaseSet.AIRange = 45;
 	phaseSet.Phases = {};
 	
 	self.PhaseSets[phaseSetIndex] = phaseSet;
@@ -939,6 +986,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = false;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 	
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -956,7 +1004,7 @@ function Create(self)
 	Phase.rayAngle = 0;
 	
 	Phase.frameStart = 0;
-	Phase.frameEnd = 1;
+	Phase.frameEnd = 2;
 	Phase.frameEasingFunc = self.EaseLinear;
 	
 	Phase.rotationSpeed = 0.4;
@@ -966,7 +1014,7 @@ function Create(self)
 	
 	Phase.stanceOffsetSpeed = 1;	
 	Phase.stanceOffsetStart = Vector(0, 0);
-	Phase.stanceOffsetEnd = Vector(-6, -20);
+	Phase.stanceOffsetEnd = Vector(-6, -25);
 	Phase.stanceEasingFunc = self.EaseLinear;
 	
 	Phase.jointOffsetSpeed = 1;
@@ -1004,14 +1052,15 @@ function Create(self)
 	Phase.canBeBlockCancelled = false;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 	
 	Phase.canBeBlocked = true;
 	Phase.doesDamage = true;
-	Phase.attackType = "Slash";
+	Phase.attackType = "Heavy Slash";
 	Phase.isInterruptableByTerrain = true;
 	Phase.Cleaves = false;
 	Phase.Damage = 4.0;
-	Phase.woundDamageMultiplier = 2.0;
+	Phase.woundDamageMultiplier = 3.0;
 	Phase.dismemberInsteadOfGibbing = true;
 	Phase.rayVecFirstPos = Vector(0, 7);
 	Phase.rayVecSecondPos = Vector(0, -20);
@@ -1020,9 +1069,9 @@ function Create(self)
 	Phase.rayTerrainRangeMultiplier = 0.5;
 	Phase.rayAngle = 0;
 	
-	Phase.frameStart = 1;
+	Phase.frameStart = 2;
 	Phase.frameEnd = 0;
-	Phase.frameEasingFunc = self.EaseLinear;
+	Phase.frameEasingFunc = self.EaseOutCubic;
 	
 	Phase.rotationSpeed = 0.8;	
 	Phase.angleStart = 100;
@@ -1030,7 +1079,7 @@ function Create(self)
 	Phase.angleEasingFunc = self.EaseInOutCubic;
 	
 	Phase.stanceOffsetSpeed = 1;	
-	Phase.stanceOffsetStart = Vector(-6, -20);
+	Phase.stanceOffsetStart = Vector(-6, -25);
 	Phase.stanceOffsetEnd = Vector(6, 20);
 	Phase.stanceEasingFunc = self.EaseLinear;
 	
@@ -1069,6 +1118,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = false;
 	Phase.canComboOut = true;
+	Phase.isAfterFinalAttackPhase = true;
 	
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -1152,6 +1202,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = false;
 	Phase.allowsPhaseSetBuffering = false;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -1172,13 +1223,13 @@ function Create(self)
 	Phase.frameEnd = 3;
 	Phase.frameEasingFunc = self.EaseInOutCubic;
 	
-	Phase.rotationSpeed = 0.4;
+	Phase.rotationSpeed = 1.0;
 	Phase.angleStart = -25;
-	Phase.angleEnd = -70;
+	Phase.angleEnd = -130;
 	Phase.angleEasingFunc = self.EaseInOutCubic;
 	
 	Phase.stanceOffsetSpeed = 1;	
-	Phase.stanceOffsetStart = Vector(0, 0);
+	Phase.stanceOffsetStart = Vector(0, -15);
 	Phase.stanceOffsetEnd = Vector(-1, -20);
 	Phase.stanceEasingFunc = self.EaseLinear;
 	
@@ -1217,6 +1268,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = false;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = true;
+	Phase.isAfterFinalAttackPhase = false;
 	
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -1238,7 +1290,7 @@ function Create(self)
 	Phase.frameEasingFunc = self.EaseInOutCubic;
 	
 	Phase.rotationSpeed = 0.6;	
-	Phase.angleStart = -70;
+	Phase.angleStart = -130;
 	Phase.angleEnd = -140;
 	Phase.angleEasingFunc = self.EaseLinear;
 	
@@ -1282,6 +1334,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = false;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = true;
+	Phase.isAfterFinalAttackPhase = false;
 	
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -1347,6 +1400,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 	
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -1429,6 +1483,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = false;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -1494,6 +1549,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = false;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -1576,6 +1632,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
 
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;
@@ -1641,6 +1698,7 @@ function Create(self)
 	Phase.canBeBlockCancelled = true;
 	Phase.allowsPhaseSetBuffering = true;
 	Phase.canComboOut = true;
+	Phase.isAfterFinalAttackPhase = false;
 
 	Phase.canBeBlocked = false;
 	Phase.doesDamage = false;

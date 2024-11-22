@@ -28,7 +28,7 @@ function OnMessage(self, message, object)
 		-- Officialize it
 		self.MeleeAI.weapon = self.EquippedItem;
 	elseif message == "Mordhau_HitFlinch" then
-	
+		-- For now, weapon just stops attacking by itself
 	end
 end
 
@@ -38,8 +38,9 @@ function Create(self)
 	self.MeleeAI.debug = false;
 	self.MeleeAI.active = false;
 
-	self.MeleeAI.skill = self.MeleeAISkill or 1; -- Diagnosis: skill issue
-	self.MeleeAI.active = false;
+	-- Skill decides how fast the AI attacks, how fast it reacts to attacks, how often it tries to parry, and how much it can block before being fatigued.
+	-- From 0 to 1.
+	self.MeleeAI.skill = self.MeleeAISkill or 0.75;
 	
 	local activity = ActivityMan:GetActivity();
 	if activity then
@@ -48,25 +49,37 @@ function Create(self)
 	
 	-- Percentage of the time that, after any block, AI will try to parry next time it blocks.
 	self.MeleeAI.parryChance = 90 * self.MeleeAI.skill; --%
+	-- Whether the next block is going to be attempted as a parry. This means that block will be inputted only when the opponent weapon is actually blockable.
 	self.MeleeAI.attemptingParry = false;
+	self.MeleeAI.attemptingParryMaxWaitTimer = Timer();
+	self.MeleeAI.attemptingParryMaxWaitTime = 2000;
+	
+	-- Percentage of the time that, after any block, AI will try to attack rather than continue blocking.
+	self.MeleeAI.aggressionAfterBlockChance = 90 * self.MeleeAI.skill; --%
+	-- Sometimes, parries just happen without it being intentional by the AI.
+	-- This is the chance for it to capitalize on it as opposed to treating it like a normal block.
+	self.MeleeAI.aggressionAfterRandomParryChance = 100 * self.MeleeAI.skill; --%
 	
 	self.MeleeAI.movementInputPrevious = 0;
 	self.MeleeAI.movementDirectionChangeTimer = Timer();
 	self.MeleeAI.movementDirectionChangeDuration = 100;
 	
+	-- Our weapon and info about it.
 	self.MeleeAI.weapon = nil;
 	self.MeleeAI.weaponInfo = {};
 	self.MeleeAI.weaponInfo.validAttackPhaseSets = {};
 	self.MeleeAI.weaponNextAttackPhaseSetIndex = 1;
 	
-	self.MeleeAI.distanceOffsetMin = -15
-	self.MeleeAI.distanceOffsetMax = 30
+	-- Parameters to randomize distance held from the opponent. This is a modifier on top of the AIRange of the next attack.
+	self.MeleeAI.distanceOffsetMin = -5
+	self.MeleeAI.distanceOffsetMax = 5
 	self.MeleeAI.distanceOffset = RangeRand(self.MeleeAI.distanceOffsetMin, self.MeleeAI.distanceOffsetMax)
 	self.MeleeAI.distanceOffsetDelayTimer = Timer()
 	self.MeleeAI.distanceOffsetDelayMin = 700
 	self.MeleeAI.distanceOffsetDelayMax = 2200
 	self.MeleeAI.distanceOffsetDelay = RangeRand(self.MeleeAI.distanceOffsetDelayMin, self.MeleeAI.distanceOffsetDelayMax)
 	
+	-- Blocking parameters.
 	self.MeleeAI.blocking = false
 	self.MeleeAI.blockingDelayMax = 600 * (0.15 + 0.85 * (1 - self.MeleeAI.skill))
 	self.MeleeAI.blockingDelay = self.MeleeAI.blockingDelayMax * 0.05
@@ -75,25 +88,30 @@ function Create(self)
 	self.MeleeAI.blockingFatigueLevelRegeneration = (0.15 + 0.85 * self.MeleeAI.skill)
 	self.MeleeAI.blockingFatigueMode = 0 -- 0 - ready, 1 - blocking, 2 - regenerating
 	
-	self.MeleeAI.tactics = {
-		["Offensive"] = function ()
-			self.MeleeAI.distanceOffset = math.abs(self.MeleeAI.distanceOffset) - 20;
-		end,
-		["Defensive"] = function ()
-			-- Basic behaviour
-		end,
-		["Retreat"] = function ()
-			self.MeleeAI.distanceOffset = math.abs(self.MeleeAI.distanceOffset) + 60;
-		end
-	}
-	self.MeleeAI.tactic = "Offensive"
 	
 	self.MeleeAI.attacking = false
-	
 	self.MeleeAI.attackOpportunityMissThreshold = 0
 	self.MeleeAI.attackOpportunityMissThresholdGain = 15 * (1 - self.MeleeAI.skill)
-	self.MeleeAI.attackOpportunityMissDelay = 1000
-	self.MeleeAI.attackOpportunityMissTimer = Timer()
+	self.MeleeAI.attackOpportunityMissDelay = 500
+	self.MeleeAI.attackOpportunityMissTimer = Timer()	
+	
+	-- "Tactic" functions that change behavior. Returns final distance offset and can also do other things every frame.
+	self.MeleeAI.tactics = {
+		["Hyperoffensive"] = function ()
+			return -10;
+		end,
+		["Offensive"] = function ()
+			return math.abs(self.MeleeAI.distanceOffset) - 5;
+		end,
+		["Defensive"] = function ()
+			return self.MeleeAI.distanceOffset -- Basic behaviour
+		end,
+		["Retreat"] = function ()
+			return math.abs(self.MeleeAI.distanceOffset) + (30 * self.MeleeAI.skill); -- Higher skill retreats further and is safer
+		end
+	}
+	
+	self.MeleeAI.tactic = "Defensive"
 	
 end
 
@@ -104,7 +122,7 @@ function ThreadedUpdateAI(self)
 	end
 	self.MeleeAI.attacking = false
 	
-	local ctrl = (self.controller and self.controller or self:GetController())
+	self.MeleeAI.controller = self:GetController();
 	
 	-- Misc
 	local movementInput = 0
@@ -116,15 +134,16 @@ function ThreadedUpdateAI(self)
 			self:RequestSyncedUpdate();
 		end
 	elseif self.MeleeAI.weapon ~= nil then
-		self.MeleeAI.weapon = nil
-		self.MeleeAI.weaponInfo = {}
+		self.MeleeAI.weapon = nil;
+		self.MeleeAI.weaponInfo = {};
+		self.MeleeAI.weaponInfo.validAttackPhaseSets = {};
+		self.MeleeAI.weaponNextAttackPhaseSetIndex = 1;
 	end
 	
 	
-	
 	-- Fatigue "state" machine
-	if self.MeleeAI.blockingFatigueMode == 0 then -- Read
-		self.MeleeAI.blockingFatigueLevel = math.min(self.MeleeAI.blockingFatigueLevel + TimerMan.DeltaTimeSecs * self.MeleeAI.blockingFatigueLevelRegeneration * 0.25, 1)
+	if self.MeleeAI.blockingFatigueMode == 0 then -- Ready
+		self.MeleeAI.blockingFatigueLevel = math.min(self.MeleeAI.blockingFatigueLevel + TimerMan.DeltaTimeSecs * self.MeleeAI.blockingFatigueLevelRegeneration * 0.5, 1)
 		if self.MeleeAI.blocking and not self.MeleeAI.attacking then
 			self.MeleeAI.blockingFatigueMode = 1
 		end
@@ -143,12 +162,8 @@ function ThreadedUpdateAI(self)
 	end
 	
 	
-	-- Extra graphical debug
-	if self.MeleeAI.debug then
-		--self.MeleeAI.blockingFatigueLevel = 0
-		--self.MeleeAI.blockingFatigueLevelRegeneration = 1
-		--self.MeleeAI.blockingFatigueMode = 0 -- 0 - ready, 1 - blocking, 2 - regenerating
-		
+	-- Graphical debug info
+	if self.MeleeAI.debug then	
 		local hudOrigin = self.Pos
 		local hudUpperPos = hudOrigin + Vector(0, -30)
 		
@@ -183,14 +198,14 @@ function ThreadedUpdateAI(self)
 		PrimitiveMan:DrawBoxPrimitive(pos + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), pos + Vector(hudBarWidthOutline * 0.5, hudBarHeight * 0.5), hudBarColorOutline)
 	end
 	
+	-- Actual AI
 	local target = self.AI.Target
 	if target and (self.MeleeAI.weapon) then
+		self.MeleeAI.controller:SetState(Controller.BODY_CROUCH, false);
+		self.MeleeAI.controller:SetState(Controller.BODY_PRONE, false);
 	
 		local dist = SceneMan:ShortestDistance(self.Pos, target.Pos, SceneMan.SceneWrapsX);
 		local distanceToTarget = dist.Magnitude;
-		
-		ctrl:SetState(Controller.BODY_CROUCH, false);
-		ctrl:SetState(Controller.BODY_PRONE, false);
 		
 		if (self.AI.TargetLostTimer.ElapsedSimTimeMS < 5000 and distanceToTarget < 200) or distanceToTarget < 100 then	
 			self.MeleeAI.active = true
@@ -203,23 +218,8 @@ function ThreadedUpdateAI(self)
 			end
 			
 			local nextAttackRange = 50;
-			
-			-- Randomize distance form target
-			if self.MeleeAI.distanceOffsetDelayTimer:IsPastSimMS(self.MeleeAI.distanceOffsetDelay) then
-				self.MeleeAI.distanceOffset = RangeRand(self.MeleeAI.distanceOffsetMin, self.MeleeAI.distanceOffsetMax)
-				self.MeleeAI.distanceOffsetDelay = RangeRand(self.MeleeAI.distanceOffsetDelayMin, self.MeleeAI.distanceOffsetDelayMax)
-				self.MeleeAI.distanceOffsetDelayTimer:Reset()
-				
-				local tacticList = {}
-				for key, tactic in pairs(self.MeleeAI.tactics) do
-					table.insert(tacticList, key)
-				end
-				self.MeleeAI.tactic = tacticList[math.random(1, #tacticList)]
-			end			
-			
 			local targetWeapon;
-			local targetWeaponMelee;
-			
+			local targetWeaponMelee;	
 			local tryingToBlock;
 			
 			--- Human enemy behavior
@@ -227,11 +227,13 @@ function ThreadedUpdateAI(self)
 			if IsAHuman(target) then
 				target = ToAHuman(target)
 				
-				ctrl:SetState(Controller.WEAPON_FIRE, false);
+				-- We use our own signalling system to do attacks
+				self.MeleeAI.controller:SetState(Controller.WEAPON_FIRE, false);
 				self.AI.fire = false;
 				
-				local range = self.MeleeAI.weaponInfo.validAttackPhaseSets[self.MeleeAI.weaponNextAttackPhaseSetIndex].AIRange + 30;
-				nextAttackRange = newRange and newRange or 50;
+				-- Get range of our next attack for later
+				local range = self.MeleeAI.weaponInfo.validAttackPhaseSets[self.MeleeAI.weaponNextAttackPhaseSetIndex].AIRange;
+				nextAttackRange = range and range or 50;
 				
 				targetWeapon = target.EquippedItem
 				targetWeaponMelee = false
@@ -243,6 +245,10 @@ function ThreadedUpdateAI(self)
 				
 				-- Compatible melee enemy behavior
 				if targetWeaponMelee then	
+					-- Generally default to regular distance offset
+					self.MeleeAI.tactic = "Defensive";
+				
+					-- Don't do incompatible combat behavior later
 					didCompatibleBehavior = true;
 				
 					local targetIsMeleeAttacking = targetWeapon:NumberValueExists("Mordhau_AIWeaponCurrentlyAttacking");
@@ -251,20 +257,34 @@ function ThreadedUpdateAI(self)
 						targetMeleeAttackRange = targetWeapon:GetNumberValue("Mordhau_AIWeaponCurrentRange");
 					end
 					
+					-- Sometimes we want to ignore further blocking and aggress immediately
+					local postBlockAggression = false;
 					if self.MeleeAI.weapon:NumberValueExists("Mordhau_AIParriedAnAttack") then
-						self.MeleeAI.successfulParry = true;
-						self.MeleeAI.weapon:RemoveNumberValue("Mordhau_AIParriedAnAttack");			
-					end					
+						if self.MeleeAI.attemptingParry or math.random(0, 100) < self.MeleeAI.aggressionAfterRandomParryChance then
+							postBlockAggression = true;
+						end
+						self.MeleeAI.weapon:RemoveNumberValue("Mordhau_AIParriedAnAttack");
+					elseif self.MeleeAI.weapon:NumberValueExists("Mordhau_AIBlockedAnAttack") then
+						if math.random(0, 100) < self.MeleeAI.aggressionAfterBlockChance then
+							postBlockAggression = true;
+						end
+						self.MeleeAI.weapon:RemoveNumberValue("Mordhau_AIBlockedAnAttack");
+					end
 					
 					-- Defend if appropriate
-					if (not self.MeleeAI.successfulParry) and (targetIsMeleeAttacking) and (distanceToTarget < (targetMeleeAttackRange + 60)) and (self.FlipFactor ~= target.FlipFactor) and (self.MeleeAI.blockingFatigueMode < 2) and (not self.MeleeAI.parrySuccess) then
+					if (targetIsMeleeAttacking) and (distanceToTarget < (targetMeleeAttackRange + 100)) and (self.MeleeAI.blockingFatigueMode < 2) and (not postBlockAggression) then
 						tryingToBlock = true;
+						-- Always be regularly defensive during blocks
+						self.MeleeAI.tactic = "Defensive";
 						
 						if self.MeleeAI.blockingDelayTimer:IsPastSimMS(self.MeleeAI.blockingDelay) or self.MeleeAI.attemptingParry then
+							if self.MeleeAI.attemptingParryMaxWaitTimer:IsPastSimMS(self.MeleeAI.attemptingParryMaxWaitTime) then
+								self.attemptingParry = false;
+							end
 						
 							if (not self.MeleeAI.attemptingParry) or targetWeapon:NumberValueExists("Mordhau_AIWeaponCurrentlyBlockable") then		
 								-- Block input
-								ctrl:SetState(Controller.WEAPON_RELOAD, true);
+								self.MeleeAI.controller:SetState(Controller.WEAPON_RELOAD, true);
 								self.MeleeAI.weapon:SetNumberValue("Mordhau_AIBlockInput", 1);
 									
 								if not self.MeleeAI.blocking then
@@ -285,6 +305,7 @@ function ThreadedUpdateAI(self)
 							
 							if math.random(0, 100) < self.MeleeAI.parryChance then
 								self.MeleeAI.attemptingParry = true;
+								self.MeleeAI.attemptingParryMaxWaitTimer:Reset();
 							else
 								self.MeleeAI.attemptingParry = false;
 							end
@@ -292,14 +313,18 @@ function ThreadedUpdateAI(self)
 					end
 					
 					-- Try to attack if not blocking, or if we just parried an attack
-					if ((not tryingToBlock) and self.MeleeAI.attackOpportunityMissTimer:IsPastSimMS(self.MeleeAI.attackOpportunityMissDelay)) or self.MeleeAI.successfulParry then			
+					if ((not tryingToBlock) and self.MeleeAI.attackOpportunityMissTimer:IsPastSimMS(self.MeleeAI.attackOpportunityMissDelay)) or postBlockAggression then			
 						-- Always be offensive during attacks
 						self.MeleeAI.tactic = "Offensive";
 					
-						if RangeRand(0, 100) < self.MeleeAI.attackOpportunityMissThreshold and not self.MeleeAI.successfulParry then -- Attack miss Threshold handling
+						if RangeRand(0, 100) < self.MeleeAI.attackOpportunityMissThreshold and not postBlockAggression then -- Attack miss Threshold handling
 							self.MeleeAI.attackOpportunityMissThreshold = -self.MeleeAI.attackOpportunityMissThresholdGain
 							self.MeleeAI.attackOpportunityMissTimer:Reset()
-						elseif distanceToTarget < (nextAttackRange + math.random(-5,5) + 10) or self.MeleeAI.successfulParry then
+						elseif distanceToTarget < (nextAttackRange + 30) or postBlockAggression then
+							-- Make sure we don't accidentally block
+							self.MeleeAI.controller:SetState(Controller.WEAPON_RELOAD, false);
+							self.MeleeAI.weapon:RemoveNumberValue("Mordhau_AIBlockInput");			
+								
 							-- Initiate our next attack
 							local phaseSetName = self.MeleeAI.weaponInfo.validAttackPhaseSets[self.MeleeAI.weaponNextAttackPhaseSetIndex].Name;
 							self.MeleeAI.weapon:SetStringValue("Mordhau_AIAttackPhaseSetInput", phaseSetName);
@@ -309,16 +334,14 @@ function ThreadedUpdateAI(self)
 							-- Increase miss Threshold
 							self.MeleeAI.attackOpportunityMissThreshold = self.MeleeAI.attackOpportunityMissThreshold + self.MeleeAI.attackOpportunityMissThresholdGain
 						end
-						self.MeleeAI.successfulParry = false;
 					end
 				end
 			end
 			
-			self.MeleeAI.tactics[self.MeleeAI.tactic]()
-			
 			-- Incompatible, or ranged, enemy behavior
 			if not didCompatibleBehavior then
-				self.MeleeAI.distanceOffset = -20
+				-- Always be offensive during attacks
+				self.MeleeAI.tactic = "Hyperoffensive";
 				
 				-- Defend if far
 				if distanceToTarget >= (nextAttackRange + 20) then
@@ -326,7 +349,7 @@ function ThreadedUpdateAI(self)
 					if enemyCtrl then
 						local frequency = 800
 						if (target.Age % frequency) < frequency * 0.7 and enemyCtrl:IsState(Controller.WEAPON_FIRE) then
-							ctrl:SetState(Controller.WEAPON_RELOAD, true);
+							self.MeleeAI.controller:SetState(Controller.WEAPON_RELOAD, true);
 							self.MeleeAI.weapon:SetNumberValue("Mordhau_AIBlockInput", 1);
 						end
 					end
@@ -339,18 +362,40 @@ function ThreadedUpdateAI(self)
 				end
 			end
 			
+			-- Tactic override for being block-fatigued
+			 if self.MeleeAI.blockingFatigueMode == 2 then
+				-- Always retreat when unable to block
+				self.MeleeAI.tactic = "Retreat";
+			end		
+			
+			-- Do distance offset randomization
+			if self.MeleeAI.distanceOffsetDelayTimer:IsPastSimMS(self.MeleeAI.distanceOffsetDelay) then
+				self.MeleeAI.distanceOffset = RangeRand(self.MeleeAI.distanceOffsetMin, self.MeleeAI.distanceOffsetMax)
+				self.MeleeAI.distanceOffsetDelay = RangeRand(self.MeleeAI.distanceOffsetDelayMin, self.MeleeAI.distanceOffsetDelayMax)
+				self.MeleeAI.distanceOffsetDelayTimer:Reset()
+				
+				local tacticList = {}
+				for key, tactic in pairs(self.MeleeAI.tactics) do
+					table.insert(tacticList, key)
+				end	
+			end
+
+			-- Apply final tactic function, and get our desired offset too
+			local finalOffset = self.MeleeAI.tactics[self.MeleeAI.tactic]()	
+			
 			-- Movement
-			local distanceToKeep = nextAttackRange + self.MeleeAI.distanceOffset
+			local distanceToKeep = nextAttackRange + finalOffset;
 			if math.abs(dist.X) > (distanceToKeep - 7) then
-				movementInput = Sign(dist.X)
+				movementInput = Sign(dist.X);
 			elseif math.abs(dist.X) < (distanceToKeep - 5) then
-				movementInput = -Sign(dist.X)
+				movementInput = -Sign(dist.X);
 			end
 			
 			if distanceToTarget < 120 then
-				ctrl:SetState(Controller.BODY_JUMP, false)
-				ctrl:SetState(Controller.BODY_JUMPSTART, false)
+				self.MeleeAI.controller:SetState(Controller.BODY_JUMP, false)
+				self.MeleeAI.controller:SetState(Controller.BODY_JUMPSTART, false)
 			end
+			
 			if movementInput ~= 0 then
 				if self.MeleeAI.movementInputPrevious ~= movementInput then
 					self.MeleeAI.movementInputPrevious = movementInput
@@ -359,23 +404,30 @@ function ThreadedUpdateAI(self)
 				
 				if self.MeleeAI.movementDirectionChangeTimer:IsPastSimMS(self.MeleeAI.movementDirectionChangeDuration) then
 					if movementInput == 1 then
-						ctrl:SetState(Controller.MOVE_RIGHT, true)
-						ctrl:SetState(Controller.MOVE_LEFT, false)
+						self.MeleeAI.controller:SetState(Controller.MOVE_RIGHT, true)
+						self.MeleeAI.controller:SetState(Controller.MOVE_LEFT, false)
 					elseif movementInput == -1 then
-						ctrl:SetState(Controller.MOVE_LEFT, true)
-						ctrl:SetState(Controller.MOVE_RIGHT, false)
+						self.MeleeAI.controller:SetState(Controller.MOVE_LEFT, true)
+						self.MeleeAI.controller:SetState(Controller.MOVE_RIGHT, false)
 					end
 				else
-					ctrl:SetState(Controller.MOVE_RIGHT, false)
-					ctrl:SetState(Controller.MOVE_LEFT, false)
+					self.MeleeAI.controller:SetState(Controller.MOVE_RIGHT, false)
+					self.MeleeAI.controller:SetState(Controller.MOVE_LEFT, false)
 				end	
 			end
 			
 			-- Look around
 			
 			-- tryingToBlock implies we have targetWeapon
-			ctrl.AnalogAim = tryingToBlock and SceneMan:ShortestDistance(self.Pos, targetWeapon.Pos, SceneMan.SceneWrapsX).Normalized or (dist.Normalized);
-		
+			self.MeleeAI.controller.AnalogAim = (tryingToBlock and not self.MeleeAI.weapon:NumberValueExists("Mordhau_AIWeaponCurrentlyAttacking")) and SceneMan:ShortestDistance(self.Pos, targetWeapon.Pos, SceneMan.SceneWrapsX).Normalized 
+			or (dist.Normalized);
+			
+			-- Face our target pls
+			if dist.X < 0 then
+				self.HFlipped = true;
+			else
+				self.HFlipped = false;
+			end
 		end
 	end
 end
@@ -383,6 +435,9 @@ end
 function SyncedUpdate(self)
 	if self.SyncedRequestWeaponInfo then
 		self.SyncedRequestWeaponInfo = false;
+		self.MeleeAI.weaponInfo = {};
+		self.MeleeAI.weaponInfo.validAttackPhaseSets = {};
+		self.MeleeAI.weaponNextAttackPhaseSetIndex = 1;
 		if self.EquippedItem and self.EquippedItem:IsInGroup("Weapons - Mordhau Melee") then
 			self.EquippedItem:SendMessage("Mordhau_AIRequestWeaponInfo");
 			-- By now, we should have gotten a reply and set our weapon and info

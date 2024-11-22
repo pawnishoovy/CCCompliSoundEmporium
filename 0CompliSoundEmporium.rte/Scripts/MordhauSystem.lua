@@ -2,29 +2,57 @@ require("MasterTerrainIDList")
 
 function OnMessage(self, message, object)
 	if message == "Mordhau_ReceiveBlockableAttack" then
+		local messageTable = {};
 		if self.CurrentPhaseData then
 			if self.CurrentPhaseData.parriesAttacks then
-				MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", "Parried");
-				self.BlockFunction(self, object.attackType, object.hitPos);
+				messageTable.blockType = "Parried";
+				MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", messageTable);
+				self.BlockFXFunction(self, object.attackType, object.hitPos);
 				self.CurrentPhaseData.canBeBlockCancelled = true;
 				self.CurrentPhaseData.allowsPhaseSetBuffering = true;
 				self.CurrentPhaseData.canComboOut = true;
-				self:SetNumberValue("Mordhau_AIParriedAnAttack", 1);				
+				self:SetNumberValue("Mordhau_AIParriedAnAttack", 1);			
+				self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + self.BlockStaminaParryReward);
 			elseif self.CurrentPhaseData.blocksAttacks then
-				MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", "Blocked");
-				self.BlockFunction(self, object.attackType, object.hitPos);
+				self.BlockFXFunction(self, object.attackType, object.hitPos);
 				self:SetNumberValue("Mordhau_AIBlockedAnAttack", 1);
 				self.DoBlockAnim = true;
+				self.BlockStamina = self.BlockStamina - ((5 * object.attackDamage * object.attackWoundDamageMultiplier) * self.BlockStaminaTakenDamageMultiplier);
+				self.BlockStaminaRegenDelayTimer:Reset();
+				if self.BlockStaminaEnabled and self.BlockStamina < (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) and self.Parent then
+					messageTable.blockType = "NoStaminaBlocked";
+					messageTable.noStaminaDamageMultiplier = self.BlockStaminaNoStaminaDamageMultiplier;
+					MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", messageTable);
+					
+					-- 20% grace amount for disarming
+					if self.BlockStaminaDisarmInsteadOfNullifyingBlock and self.BlockStamina < ((self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) - (self.BlockStaminaMaximum * 0.2)) then
+						local vel = self.Parent.Vel;
+						self:RemoveFromParent(true, true);
+						self.Vel = vel + Vector(-5 * self.FlipFactor, -10);
+						self.AngularVel = 10 * self.FlipFactor;
+						if self.DisarmSound then
+							self.DisarmSound:Play(self.Pos);
+						end
+					end
+				else
+					messageTable.blockType = "Blocked";
+					MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", "Blocked");
+				end
+				self.BlockStamina = math.max(0, self.BlockStamina);
 			end
 		end
 	elseif message == "Mordhau_MessageReturn_BlockResponse" then
 		self.MessageReturn_BlockResponse = object;
-		self.BeingBlockedFunction(self);
+		self.BeingBlockedFXFunction(self);
 	elseif message == "Mordhau_HitFlinch" then
 		if self.PlayingPhaseSet then
+			if self.CurrentPhaseData then
+				self.CurrentPhaseData.canBeBlockCancelled = true;
+			end
 			if not self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet then
 				self.FlinchCooldownTimer:Reset();
 				self.PlayingPhaseSet = false;
+				self.ReloadInputNullifyForAttack = false;
 			end
 		end
 	elseif message == "Mordhau_AIRequestWeaponInfo" then
@@ -61,7 +89,7 @@ function playPhaseSet(self, name)
 		self:RemoveNumberValue("Mordhau_AIBlockedAnAttack");
 		self:RemoveNumberValue("Mordhau_AIParriedAnAttack");
 	
-		self.MessageReturn_BlockResponse = false;
+		self.MessageReturn_BlockResponse = nil;
 		self.PhaseSetWasBlocked = false;
 		self.PhaseSetWasParried = false;
 		self.PhaseSetWasInterruptedByTerrain = false;
@@ -88,14 +116,14 @@ function Create(self)
 	----------------- Sounds and FX
 	-----------------
 	
-	-- Default HitMOFunction. Handles Slash/Stab, Metal/Flesh, among other things.
-	if not self.HitMOFunction then
-		self.HitMOFunction = function (self, hitTarget, hitPos)
+	-- Default HitMOFXFunction. Handles Slash/Stab, Metal/Flesh, among other things.
+	if not self.HitMOFXFunction then
+		self.HitMOFXFunction = function (self, hitTarget, hitPos)
 			local hitType;		
 			local woundName = hitTarget:GetEntryWoundPresetName();
 			local material = hitTarget.Material.PresetName;
 			
-			if string.find(material,"Flesh") or string.find(woundName,"Flesh") or string.find(material,"Bone") or string.find(woundName,"Bone") then
+			if string.find(material,"Flesh") or string.find(woundName,"Flesh") then
 				hitType = "Flesh";
 			else
 				hitType = "Metal";
@@ -132,14 +160,16 @@ function Create(self)
 		end
 	end
 	
-	if not self.BeingBlockedFunction then
-		self.BeingBlockedFunction = function (self)
+	-- Default BeingBlockedFX function. Just plays one sound.
+	if not self.BeingBlockedFXFunction then
+		self.BeingBlockedFXFunction = function (self)
 			self.HitSFX.BeingBlocked:Play(self.Pos);
 		end
 	end
 	
-	if not self.BlockFunction then
-		self.BlockFunction = function (self, attackType, hitPos)
+	-- Default BlockFX function. Handles Stab/Slash, Heavy attacks, and parrying FX.
+	if not self.BlockFXFunction then
+		self.BlockFXFunction = function (self, attackType, hitPos)
 			if string.find(attackType, "Stab") then
 				if self.BlockSFX.BlockStab then
 					self.BlockSFX.BlockStab:Play(self.Pos);
@@ -163,8 +193,8 @@ function Create(self)
 			end
 			
 			if string.find(attackType, "Heavy") then
-				if self.BlockSFX.HeavyBlock then
-					self.BlockSFX.HeavyBlock:Play(self.Pos);
+				if self.BlockSFX.HeavyBlockAdd then
+					self.BlockSFX.HeavyBlockAdd:Play(self.Pos);
 				end
 				if self.BlockGFX.HeavyBlockAdd then
 					local effect = self.BlockGFX.HeavyBlockAdd:Clone();
@@ -176,7 +206,7 @@ function Create(self)
 			
 			if self.CurrentPhaseData and self.CurrentPhaseData.parriesAttacks then
 				if self.BlockGFX.Parry then
-					local effect = self.BlockGFX.Parry:Clone();
+					local effect = self.BlockGFX.ParryAdd:Clone();
 					effect.Pos = hitPos;
 					MovableMan:AddParticle(effect);
 					effect:GibThis();
@@ -192,15 +222,25 @@ function Create(self)
 	----------------- Melee
 	-----------------
 	
+	self.FlinchCooldownTimer = Timer();
+	
+	self.ParriedCooldownTimer = Timer();
+	
+	self.BlockStaminaEnabled = self.BlockStaminaMaximum > 0;
+	
+	self.BlockStamina = self:NumberValueExists("Mordhau_BlockStamina") and self:GetNumberValue("Mordhau_BlockStamina") or self.BlockStaminaMaximum
+	self:RemoveNumberValue("Mordhau_BlockStamina");	
+	
+	self.BlockStaminaRegenDelayTimer = Timer();
+	
+	self.BlockStaminaRegenDelay = 500;
+	
 	self.EffectiveWoundCount = self:NumberValueExists("Mordhau_EffectiveWoundCount") and self:GetNumberValue("Mordhau_EffectiveWoundCount") or self.WoundCount;
+	self:RemoveNumberValue("Mordhau_EffectiveWoundCount");
 	
 	self.GibWoundLimit = 999;
 	
 	self.LastWoundCount = self.WoundCount;
-	
-	self.FlinchCooldownTimer = Timer();
-	
-	self.ParryCooldownTimer = Timer();
 
 	-----------------
 	----------------- PhaseSet
@@ -265,6 +305,10 @@ function OnAttach(self, newParent)
 		if not self.EquippedOffTheGround then
 			playPhaseSet(self, self.EquipPhaseSetName);
 		end
+		
+		self.BlockStamina = self.BlockStaminaMaximum;
+		
+		self.HUDVisible = false;
 	end
 end
 
@@ -290,6 +334,10 @@ function OnDetach(self)
 end
 
 function ThreadedUpdate(self)
+	if self.DisarmSound then
+		self.DisarmSound.Pos = self.Pos;
+	end
+
 	self.AngVel = 0;
 	self.HorizontalAnim = 0;
 	self.VerticalAnim = 0;
@@ -299,8 +347,13 @@ function ThreadedUpdate(self)
 		self.AngVel = self.BlockAngVel;
 		self.HorizontalAnim = -1;
 	end
+	
+	-- Should not be required, but sometimes gibbing crashes due to this somehow..
+	if not MovableMan:ValidMO(self.Parent) then
+		self.Parent = nil;
+	end
 
-	if self.PlayingPhaseSet and self.CanParryBullets and self.CurrentPhaseData and self.CurrentPhaseData.parriesAttacks then
+	if self.Parent and self.PlayingPhaseSet and self.CanParryBullets and self.CurrentPhaseData and self.CurrentPhaseData.parriesAttacks then
 		-- Ignore incoming wounds, play parry sound for every parried bullet if applicable
 		if self.WoundCount > self.LastWoundCount then
 			if self.BlockSFX.ParryAdd then
@@ -325,10 +378,26 @@ function ThreadedUpdate(self)
 		local primaryInput = self:IsActivated();
 		local primaryHotkeyInput = self:HotkeyActionIsActivated(HeldDevice.PRIMARYHOTKEY);
 		local auxiliaryHotkeyInput = self:HotkeyActionIsActivated(HeldDevice.AUXILIARYHOTKEY);
-		-- TODO: real input handling for the reload block crap
 		local anyAttackInput = primaryInput or primaryHotkeyInput or auxiliaryHotkeyInput;
-		local reloadInput = self.ParentController:IsState(Controller.WEAPON_RELOAD) 
-		local heldReloadInput = isPlayerControlled and self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet and UInputMan:KeyHeld(Key.R);
+		
+		-- TODO: fix this mess
+		local reloadInput;
+		local heldReloadInput;
+		reloadInput = self.ParentController:IsState(Controller.WEAPON_RELOAD) 
+		heldReloadInput = isPlayerControlled and UInputMan:KeyHeld(Key.R);
+		
+		-- Make attacking from a block not risk just insta-block-cancelling
+		if reloadInput and anyAttackInput and not self.PhaseSetWasBlocked then
+			self.ReloadInputNullifyForAttack = true;
+		elseif not reloadInput then
+			self.ReloadInputNullifyForAttack = false;
+		end
+		
+		-- Nullify as mentioned
+		if self.ReloadInputNullifyForAttack then
+			reloadInput = false;
+			heldReloadInput = false;
+		end
 		
 		local aiAttackPhaseSetName;
 		if self:StringValueExists("Mordhau_AIAttackPhaseSetInput") then
@@ -379,14 +448,26 @@ function ThreadedUpdate(self)
 					end
 				end
 				-- Allow blocking for all phases of a PhaseSet if we hit anything
-				if self.PhaseSetWasBlocked or self.PhaseSetWasInterruptedByTerrain then
+				if self.PhaseSetWasBlocked or self.PhaseSetWasParried or self.PhaseSetWasInterruptedByTerrain then
 					self.CurrentPhaseData.canBeBlockCancelled = true;
+				end
+				-- If this is after our final attack phase, let AI know
+				if self.CurrentPhaseData.isAfterFinalAttackPhase then
+					self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyAttacking");
 				end
 			end
 			
 			if self.CurrentPhaseData.soundStart and not self.CurrentPhaseStartSoundPlayed then
 				self.CurrentPhaseData.soundStart:Play(self.Pos);
 				self.CurrentPhaseStartSoundPlayed = true;
+			end
+			
+			-- TODO: remove this, irrelevant?
+			-- Disable blocking if we're under the required stamina.
+			if self.BlockStaminaEnabled then
+				--if self.BlockStamina < (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) then
+				--	self.CurrentPhaseData.blocksAttacks = false;
+				--end
 			end
 			
 			-- If this is the block PhaseSet, allow reload input to hold it
@@ -438,6 +519,9 @@ function ThreadedUpdate(self)
 				end
 				if auxiliaryHotkeyInput then
 					self.BufferedPhaseSet = self.AuxiliaryHotkeyInputPhaseSetName;
+				end
+				if reloadInput and not self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet then
+					self.BufferedPhaseSet = self.BlockInputPhaseSetName;
 				end
 				if aiAttackPhaseSetName then
 					self.BufferedPhaseSet = aiAttackPhaseSetName;
@@ -527,7 +611,7 @@ function ThreadedUpdate(self)
 			if self.PhaseSetWasParried then
 				self.BufferedPhaseSet = "Parried Reaction PhaseSet";
 				self.CurrentPhaseData.canComboOut = true;
-				self.ParryCooldownTimer:Reset();
+				self.ParriedCooldownTimer:Reset();
 			end
 			
 			-- Apply buffer logic and end phase early if appropriate
@@ -545,9 +629,10 @@ function ThreadedUpdate(self)
 					end
 
 					pseudoPhase.Duration = pseudoPhase.Duration + math.max(0, (oldPhaseDurationLeft / 2));
-					pseudoPhase.frameStart = self.Frame;
-					pseudoPhase.angleStart = self.RotationTarget;
-					pseudoPhase.stanceStart = self.StanceOffsetTarget;
+					-- Don't be as smooth if the buffered PhaseSet is a blocking one, we wanna get in position ASAP
+					pseudoPhase.frameStart = self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet and self.PhaseSets[self.CurrentPhaseSet].frameStart or self.Frame;
+					pseudoPhase.angleStart = self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet and self.PhaseSets[self.CurrentPhaseSet].angleStart or self.RotationTarget;
+					pseudoPhase.stanceStart = self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet and self.PhaseSets[self.CurrentPhaseSet].stanceStart or self.StanceOffsetTarget;
 					pseudoPhase.jointOffsetStart = self.JointOffsetTarget;
 					pseudoPhase.SupportOffsetStart = self.supportOffsetTarget;
 					
@@ -618,7 +703,7 @@ function ThreadedUpdate(self)
 			self.SupportOffsetTarget = self.OriginalSupportOffset;
 			self.StanceOffsetTarget = Vector(0, 0);
 			
-			if self.FlinchCooldownTimer:IsPastSimMS(self.FlinchCooldown) and self.ParryCooldownTimer:IsPastSimMS(self.ParryCooldown) then
+			if self.FlinchCooldownTimer:IsPastSimMS(self.FlinchCooldown) and self.ParriedCooldownTimer:IsPastSimMS(self.ParryCooldown) then
 				-- Player input
 				if isPlayerControlled then
 					if primaryInput then
@@ -645,6 +730,34 @@ function ThreadedUpdate(self)
 			self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyAttacking");
 			self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyBlockable");
 			self:RemoveNumberValue("Mordhau_AIWeaponCurrentRange");
+		end
+		
+		-- Block stamina
+		if self.BlockStaminaRegenDelayTimer:IsPastSimMS(self.BlockStaminaRegenDelay) then
+			self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + TimerMan.DeltaTimeSecs * self.BlockStaminaRegenRate);
+		end
+		
+		-- Block stamina bar
+		if (isPlayerControlled or self.DrawBlockStaminaBarForAI) and self.BlockStaminaEnabled and self.DrawBlockStaminaBar then
+			local hudOrigin = self.Parent.AboveHUDPos;
+			
+			local hudBarWidthOutline = 30;
+			local hudBarWidth = 30;
+			local hudBarHeight = 3;
+			local hudBarColor = 87;
+			local hudBarColorBG = 83;
+			local hudBarColorOutline = 2;
+			
+			local hudBarOffset = Vector(1, 1);
+			
+			local hudBarWidth = 30 * (self.BlockStamina / self.BlockStaminaMaximum);
+
+			hudBarColor = self.BlockStamina > (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) and 87 or 47;
+
+			PrimitiveMan:DrawBoxFillPrimitive(hudOrigin + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), hudOrigin + Vector(hudBarWidthOutline * 0.5, hudBarHeight * 0.5), hudBarColorBG);
+			PrimitiveMan:DrawBoxFillPrimitive(hudOrigin + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), hudOrigin + Vector(hudBarWidthOutline * -0.5 + hudBarWidth, hudBarHeight * 0.5), hudBarColor);
+			PrimitiveMan:DrawBoxPrimitive(hudOrigin + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), hudOrigin + Vector(hudBarWidthOutline * 0.5, hudBarHeight * 0.5), hudBarColorOutline)
+			
 		end
 		
 		-- Animation
@@ -694,27 +807,35 @@ end
 function SyncedUpdate(self)
 	if self.LastHitTargetUniqueID and self.CurrentPhaseData then
 		local hitTarget = MovableMan:FindObjectByUniqueID(self.LastHitTargetUniqueID);
-		
 		if self.CurrentPhaseData.canBeBlocked and hitTarget:IsInGroup("Weapons - Melee") then
 			local messageTable = {};
 			messageTable.senderUniqueID = self.UniqueID;
 			messageTable.attackType = self.CurrentPhaseData.attackType;
+			messageTable.attackDamage = self.CurrentPhaseData.Damage;
+			messageTable.attackWoundDamageMultiplier = self.CurrentPhaseData.woundDamageMultiplier;
 			messageTable.hitPos = Vector(self.LastHitTargetPosition.X, self.LastHitTargetPosition.Y);
 			hitTarget:SendMessage("Mordhau_ReceiveBlockableAttack", messageTable);
 			-- At this point, if we were blocked, we have received a response
 			if self.MessageReturn_BlockResponse then
-				self.CurrentPhaseData.canBeBlocked = false;
-				self.CurrentPhaseData.doesDamage = false;
-				self.CurrentPhaseData.canBeBlockCancelled = true;
-				
-				if self.MessageReturn_BlockResponse == "Parried" then
-					-- Guarantee that we buffer into a parry reaction				
-					self.PhaseSetWasParried = true;
+				if self.MessageReturn_BlockResponse.blockType ~= "NoStaminaBlocked" then
+					self.CurrentPhaseData.canBeBlocked = false;
+					self.CurrentPhaseData.doesDamage = false;
+					self.CurrentPhaseData.canBeBlockCancelled = true;
+					
+					self.ReloadInputNullifyForAttack = false;
+					
+					if self.MessageReturn_BlockResponse.blockType == "Parried" then
+						-- Guarantee that we buffer into a parry reaction				
+						self.PhaseSetWasParried = true;
+					end
+					
+					self.PhaseSetWasBlocked = true;
+					self.MessageReturn_BlockResponse = nil;
+					return;
+				else
+					self.CurrentPhaseData.Damage = math.max(1, self.CurrentPhaseData.Damage * self.MessageReturn_BlockResponse.noStaminaDamageMultiplier);
+					self.CurrentPhaseData.woundDamageMultiplier = self.CurrentPhaseData.woundDamageMultiplier * self.MessageReturn_BlockResponse.noStaminaDamageMultiplier;
 				end
-				
-				self.PhaseSetWasBlocked = true;
-				self.MessageReturn_BlockResponse = false;
-				return;
 			end
 		end
 	
@@ -735,7 +856,9 @@ function SyncedUpdate(self)
 				hitTarget = ToMOSRotating(hitTarget);
 				hitTargetRootParent = hitTarget:GetRootParent();
 				
-				self.HitMOFunction(self, hitTarget, self.LastHitTargetPosition);
+				self.HitMOFXFunction(self, hitTarget, self.LastHitTargetPosition);
+				
+				self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + self.BlockStaminaHitMOReward);
 				
 				local woundOffset = SceneMan:ShortestDistance(hitTarget.Pos, self.LastHitTargetPosition, SceneMan.SceneWrapsX);
 				local woundAngle = woundOffset.AbsRadAngle - hitTarget.RotAngle;		
@@ -783,4 +906,5 @@ end
 
 function OnSave(self)
 	self:SetNumberValue("Mordhau_EffectiveWoundCount", self.EffectiveWoundCount);
+	self:SetNumberValue("Mordhau_BlockStamina", self.EffectiveWoundCount);
 end

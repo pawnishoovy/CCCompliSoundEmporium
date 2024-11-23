@@ -51,6 +51,10 @@ function OnMessage(self, message, object)
 	elseif message == "Mordhau_MessageReturn_BlockResponse" then
 		self.MessageReturn_BlockResponse = object;
 		self.BeingBlockedFXFunction(self);
+	elseif message == "Mordhau_AreYouBlocking" then
+		MovableMan:FindObjectByUniqueID(object):SendMessage("Mordhau_MessageReturn_AreYouBlockingResponse", self.CurrentPhaseData and (self.CurrentPhaseData.blocksAttacks or self.CurrentPhaseData.parriesAttacks) or false);
+	elseif message == "Mordhau_MessageReturn_AreYouBlockingResponse" then
+		self.MessageReturn_AreYouBlockingResponse = object;
 	elseif message == "Mordhau_HitFlinch" then
 		if self.PlayingPhaseSet then
 			if self.CurrentPhaseData then
@@ -97,6 +101,7 @@ function playPhaseSet(self, name)
 		self:RemoveNumberValue("Mordhau_AIParriedAnAttack");
 	
 		self.MessageReturn_BlockResponse = nil;
+		self.MessageReturn_AreYouBlockingResponse = nil;
 		self.PhaseSetWasBlocked = false;
 		self.PhaseSetWasParried = false;
 		self.PhaseSetWasInterruptedByTerrain = false;
@@ -967,12 +972,30 @@ function SyncedUpdate(self)
 				-- Flinch if we have it turned on
 				if IsAHuman(hitTargetRootParent) and self.FlinchesOnHit then
 					local human = ToAHuman(hitTargetRootParent);
-					human:SendMessage("Mordhau_HitFlinch");
-					if human.EquippedItem then
-						human.EquippedItem:SendMessage("Mordhau_HitFlinch");
+					
+					-- First check if we managed to hit the shield of someone who was blocking
+					local toFlinch = true;
+					if hitTarget:IsInGroup("Shields") then
+						if human.EquippedItem and human.EquippedItem:IsInGroup("Weapons - Mordhau Melee") then
+							human.EquippedItem:SendMessage("Mordhau_AreYouBlocking", self.UniqueID);
+							-- By now we should have gotten a response
+							if self.MessageReturn_AreYouBlockingResponse then
+								toFlinch = false;
+							end
+						end
 					end
-					if human.EquippedBGItem then
-						human.EquippedBGItem:SendMessage("Mordhau_HitFlinch");
+					
+					self.MessageReturn_AreYouBlockingResponse = nil;
+				
+					if toFlinch then
+						local human = ToAHuman(hitTargetRootParent);
+						human:SendMessage("Mordhau_HitFlinch");
+						if human.EquippedItem then
+							human.EquippedItem:SendMessage("Mordhau_HitFlinch");
+						end
+						if human.EquippedBGItem then
+							human.EquippedBGItem:SendMessage("Mordhau_HitFlinch");
+						end
 					end
 				end
 				

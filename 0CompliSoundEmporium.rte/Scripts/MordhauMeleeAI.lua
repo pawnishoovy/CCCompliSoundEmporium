@@ -35,7 +35,7 @@ end
 function Create(self)
 	
 	self.MeleeAI = {}
-	self.MeleeAI.debug = true
+	self.MeleeAI.debug = false;
 	self.MeleeAI.active = false;
 
 	-- Skill decides how fast the AI attacks, how fast it reacts to attacks, how often it tries to parry.

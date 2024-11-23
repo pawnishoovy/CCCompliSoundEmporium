@@ -927,19 +927,29 @@ function SyncedUpdate(self)
 				local woundOffset = Vector(woundOffset.X * hitTarget.FlipFactor, woundOffset.Y):RadRotate(-hitTarget.RotAngle * hitTarget.FlipFactor):SetMagnitude(woundOffset.Magnitude);		
 				local woundName = hitTarget:GetEntryWoundPresetName();
 				
-				local woundsToAdd = math.floor(self.CurrentPhaseData.Damage + math.random(0, 0.99));
+				-- Big check if it's an arm, leg, or head
+				local hitTargetIsPartOfActor = IsAttachable(hitTarget) and ToAttachable(hitTarget):IsAttached() and (IsArm(hitTarget) or IsLeg(hitTarget) or (IsAHuman(hitTargetRootParent) and ToAHuman(hitTargetRootParent).Head and hitTarget.UniqueID == ToAHuman(hitTargetRootParent).Head.UniqueID));
+				
+				local damageToUse = self.CurrentPhaseData.Damage;
+				local woundDamageMultiplierToUse = self.CurrentPhaseData.woundDamageMultiplier;
+				
+				-- Roll wound damage multipler into raw wounds if it wouldn't be used otherwise
+				if (not hitTargetIsPartOfActor) and (not IsActor(hitTarget)) then
+					damageToUse = math.max(1.0, damageToUse * self.CurrentPhaseData.woundDamageMultiplier);
+					woundDamageMultiplierToUse = math.min(1.0, woundDamageMultiplierToUse);
+				end
+					
+				local woundsToAdd = math.floor(damageToUse + math.random(0, 0.99));
 				
 				if woundName ~= "" then
 					for i = 1, woundsToAdd do
-						if IsAttachable(hitTarget) and self.CurrentPhaseData.dismemberInsteadOfGibbing and hitTarget.WoundCount + 2 >= hitTarget.GibWoundLimit and IsActor(hitTargetRootParent) then
-							if ToAttachable(hitTarget):IsAttached() and (IsArm(hitTarget) or IsLeg(hitTarget) or (IsAHuman(hitTargetRootParent) and ToAHuman(hitTargetRootParent).Head and hitTarget.UniqueID == ToAHuman(hitTargetRootParent).Head.UniqueID)) then
-								ToAttachable(hitTarget):RemoveFromParent(true, true);
-								return;
-							end
+						if self.CurrentPhaseData.dismemberInsteadOfGibbing and hitTarget.WoundCount + 2 >= hitTarget.GibWoundLimit and IsActor(hitTargetRootParent) and hitTargetIsPartOfActor then
+							ToAttachable(hitTarget):RemoveFromParent(true, true);
+							return;
 						end					
 					
 						local wound = CreateAEmitter(woundName);
-						wound.DamageMultiplier = self.CurrentPhaseData.woundDamageMultiplier;
+						wound.DamageMultiplier = woundDamageMultiplierToUse;
 						wound.InheritedRotAngleOffset = woundAngle;
 						wound.DrawAfterParent = true;
 						hitTarget:AddWound(wound, woundOffset, true);

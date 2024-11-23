@@ -101,6 +101,7 @@ function Create(self)
 			return math.abs(self.MeleeAI.distanceOffset) - 5;
 		end,
 		["Defensive"] = function ()
+			self.MeleeAI.controller:SetState(Controller.MOVE_FAST, false);
 			return self.MeleeAI.distanceOffset -- Basic behaviour
 		end,
 		["Retreat"] = function ()

@@ -35,12 +35,12 @@ end
 function Create(self)
 	
 	self.MeleeAI = {}
-	self.MeleeAI.debug = false;
+	self.MeleeAI.debug = true;
 	self.MeleeAI.active = false;
 
-	-- Skill decides how fast the AI attacks, how fast it reacts to attacks, how often it tries to parry, and how much it can block before being fatigued.
+	-- Skill decides how fast the AI attacks, how fast it reacts to attacks, how often it tries to parry.
 	-- From 0 to 1.
-	self.MeleeAI.skill = self.MeleeAISkill or 0.75;
+	self.MeleeAI.skill = self.MeleeAISkill or 1.0;
 	
 	local activity = ActivityMan:GetActivity();
 	if activity then
@@ -84,10 +84,6 @@ function Create(self)
 	self.MeleeAI.blockingDelayMax = 600 * (0.15 + 0.85 * (1 - self.MeleeAI.skill))
 	self.MeleeAI.blockingDelay = self.MeleeAI.blockingDelayMax * 0.05
 	self.MeleeAI.blockingDelayTimer = Timer()
-	self.MeleeAI.blockingFatigueLevel = 1
-	self.MeleeAI.blockingFatigueLevelRegeneration = (0.15 + 0.85 * self.MeleeAI.skill)
-	self.MeleeAI.blockingFatigueMode = 0 -- 0 - ready, 1 - blocking, 2 - regenerating
-	
 	
 	self.MeleeAI.attacking = false
 	self.MeleeAI.attackOpportunityMissThreshold = 0
@@ -98,6 +94,7 @@ function Create(self)
 	-- "Tactic" functions that change behavior. Returns final distance offset and can also do other things every frame.
 	self.MeleeAI.tactics = {
 		["Hyperoffensive"] = function ()
+			self.MeleeAI.controller:SetState(Controller.MOVE_FAST, true);
 			return -10;
 		end,
 		["Offensive"] = function ()
@@ -140,28 +137,6 @@ function ThreadedUpdateAI(self)
 		self.MeleeAI.weaponNextAttackPhaseSetIndex = 1;
 	end
 	
-	
-	-- Fatigue "state" machine
-	if self.MeleeAI.blockingFatigueMode == 0 then -- Ready
-		self.MeleeAI.blockingFatigueLevel = math.min(self.MeleeAI.blockingFatigueLevel + TimerMan.DeltaTimeSecs * self.MeleeAI.blockingFatigueLevelRegeneration * 0.5, 1)
-		if self.MeleeAI.blocking and not self.MeleeAI.attacking then
-			self.MeleeAI.blockingFatigueMode = 1
-		end
-	elseif self.MeleeAI.blockingFatigueMode == 1 then -- Blocking
-		self.MeleeAI.blockingFatigueLevel = math.max(self.MeleeAI.blockingFatigueLevel - TimerMan.DeltaTimeSecs * 1.0, 0)
-		if not self.MeleeAI.blocking or self.MeleeAI.attacking then
-			self.MeleeAI.blockingFatigueMode = 0
-		elseif self.MeleeAI.blockingFatigueLevel < 0.05 then
-			self.MeleeAI.blockingFatigueMode = 2
-		end
-	elseif self.MeleeAI.blockingFatigueMode == 2 then -- Regeneration (cooldown)
-		self.MeleeAI.blockingFatigueLevel = math.min(self.MeleeAI.blockingFatigueLevel + TimerMan.DeltaTimeSecs * self.MeleeAI.blockingFatigueLevelRegeneration, 1)
-		if self.MeleeAI.blockingFatigueLevel > 0.95 then
-			self.MeleeAI.blockingFatigueMode = 0
-		end
-	end
-	
-	
 	-- Graphical debug info
 	if self.MeleeAI.debug then	
 		local hudOrigin = self.Pos
@@ -177,15 +152,6 @@ function ThreadedUpdateAI(self)
 		local hudBarOffset = Vector(1, 1)
 		
 		local pos = hudUpperPos
-		
-		-- Fatigue
-		hudBarWidth = 30 * self.MeleeAI.blockingFatigueLevel
-		hudBarColor = ((self.MeleeAI.blockingFatigueMode == 0 and 87) or (self.MeleeAI.blockingFatigueMode == 1 and 99 or 47))
-		hudBarColorBG = 83
-
-		PrimitiveMan:DrawBoxFillPrimitive(pos + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5) + hudBarOffset, pos + Vector(hudBarWidthOutline * 0.5, hudBarHeight * 0.5) + hudBarOffset, hudBarColorBG)
-		PrimitiveMan:DrawBoxFillPrimitive(pos + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), pos + Vector(hudBarWidthOutline * -0.5 + hudBarWidth, hudBarHeight * 0.5), hudBarColor)
-		PrimitiveMan:DrawBoxPrimitive(pos + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), pos + Vector(hudBarWidthOutline * 0.5, hudBarHeight * 0.5), hudBarColorOutline)
 		
 		pos = pos + Vector(0, 5)
 		
@@ -272,7 +238,7 @@ function ThreadedUpdateAI(self)
 					end
 					
 					-- Defend if appropriate
-					if (targetIsMeleeAttacking) and (distanceToTarget < (targetMeleeAttackRange + 100)) and (self.MeleeAI.blockingFatigueMode < 2) and (not postBlockAggression) then
+					if (targetIsMeleeAttacking) and (distanceToTarget < (targetMeleeAttackRange + 100)) and (not postBlockAggression) then
 						tryingToBlock = true;
 						-- Always be regularly defensive during blocks
 						self.MeleeAI.tactic = "Defensive";
@@ -362,9 +328,9 @@ function ThreadedUpdateAI(self)
 				end
 			end
 			
-			-- Tactic override for being block-fatigued
-			 if self.MeleeAI.blockingFatigueMode == 2 then
-				-- Always retreat when unable to block
+			-- Tactic override for being low on weapon stamina
+			 if self.MeleeAI.weapon:GetNumberValue("Mordhau_AIBlockStaminaPercentage") < 0.2 and not self.MeleeAI.attemptingParry then
+				-- Always retreat when in danger
 				self.MeleeAI.tactic = "Retreat";
 			end		
 			

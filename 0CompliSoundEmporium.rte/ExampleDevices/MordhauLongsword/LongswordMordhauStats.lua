@@ -4,6 +4,13 @@ function Create(self)
 	----------------- Mordhau system stats file
 	-----------------
 	
+	-- Welcome to the Mordhau system.
+	
+	-- After reading through all the comments here, you should make sure your weapon has:
+	-- At least one attack-oriented PhaseSet
+	-- A blocking PhaseSet
+	-- A being-parried reaction PhaseSet of sane length
+	
 	-- attackType convention:
 	
 	-- Slash (referring to motion, not necessarily sharp strikes)
@@ -38,8 +45,9 @@ function Create(self)
 	
 	-- Lockout in MS from doing anything but block input after being flinched by being hit by melee.
 	self.FlinchCooldown = 500;	
-	-- Lockout in MS from doing anything but block input after being parried, on top of Parried Reaction PhaseSet's total time.
-	self.ParryCooldown = 300;
+	-- Lockout in MS from doing anything but block input after being parried. This ticks along during Parried Reaction, so if
+	-- it is shorter than the PhaseSet itself it may become irrelevant.
+	self.ParryCooldown = 500;
 	
 	-- Maximum blocking stamina. Set to less than 0 to disable the system.
 	-- How much stamina an attack takes to block is 5 * Damage * woundDamageMultiplier.
@@ -48,25 +56,26 @@ function Create(self)
 	self.BlockStaminaTakenDamageMultiplier = 1.0;	
 	-- At this multiplier times BlockStaminaMaximum, blocking will cease to function or you will be disarmed, depending on the below setting.
 	-- Parries always work.
-	self.BlockStaminaFailureThresholdMultiplier = 0.1;
-	-- Block stamina regeneration rate. Starts after 500ms of not blocking anything. Arbitrary.
-	self.BlockStaminaRegenRate = 5;	
-	-- Multiplier for BlockStaminaRegenRate while actively blocking. You could multiply it to be more for a Sekiro-style deal.
-	self.BlockStaminaBlockingMultiplier = 1.5;
+	self.BlockStaminaFailureThresholdMultiplier = 0.2;
+	-- Block stamina regeneration rate. Starts after 3000ms of not blocking anything.
+	self.BlockStaminaRegenRate = 15.0;	
+	-- Multiplier for BlockStaminaRegenRate while actively blocking (i.e. current phase is blocksAttacks)
+	self.BlockStaminaBlockingRegenMultiplier = 1.5;
 	-- Multiplier for incoming damage when being hit through an ineffective block.
 	self.BlockStaminaNoStaminaDamageMultiplier = 0.5;
-	-- Raw value to add to stamina when an attack is successfully parried.  You can have it negative here so parries aren't free,
-	-- but mind that this is an absolute value vs the damage-relative one when blocking.
+	-- Multiplier for how much stamina damage is taken from any particular parried attack.
+	self.BlockStaminaParryDamageMultiplier = 0.25;
+	-- Raw value to add to stamina when an attack is successfully parried.
 	self.BlockStaminaParryReward = 0;
 	-- Raw value to add to stamina when an attack is landed on an MO, whether it is blocked, parried, or anything else.
 	self.BlockStaminaHitMOReward = 5;
-	-- Whether to knock this weapon out of the holder's hands if an  attack takes it below the threshold, rather than nullifying the block.
-	-- Note there is a 20% grace amount, i.e. if we are above the threshold and an attack takes us to threshold - 20% max stamina, we are set to
-	-- 0 stamina instead.
-	self.BlockStaminaDisarmInsteadOfNullifyingBlock = true;
+	-- Whether to knock this weapon out of the holder's hands if it blocks an attack while under the failure threshold.
+	self.BlockStaminaDisarmBelowThreshold = true;
+	-- Raw stamina cost when block cancelling any attack. If this is above 0, attempting to block cancel without enough stamina won't work.
+	self.BlockStaminaBlockCancelCost = 15;
 	-- Whether to show weapon stamina above the holder, if player controlled. Recommended on.
 	self.DrawBlockStaminaBar = true;
-	-- Whether to show weapon stamina above the holder for AI as well. Does nothing if DrawBlockStaminaBar isn't on. Recommended off, but it's your call.
+	-- Whether to show weapon stamina above the holder for AI as well. Does nothing if DrawBlockStaminaBar isn't on. Recommended off.
 	self.DrawBlockStaminaBarForAI = true;
 	
 	-- Whether phases that can block attacks will also block bullets. If this is true, will turn off bullet collisions when not blocking.
@@ -109,7 +118,6 @@ function Create(self)
 	self.HitMOFXFunction = nil;
 	
 	self.HitGFX = {};
-	
 	self.HitGFX.Default = CreateMOSRotating("CompliSound Mordhau Terrain Soft Effect", "0CompliSoundEmporium.rte");
 	self.HitGFX.Concrete = CreateMOSRotating("CompliSound Mordhau Terrain Hard Effect", "0CompliSoundEmporium.rte");
 	self.HitGFX.Dirt = CreateMOSRotating("CompliSound Mordhau Terrain Soft Effect", "0CompliSoundEmporium.rte");
@@ -150,18 +158,16 @@ function Create(self)
 	self.BlockSFX.ParryAdd = CreateSoundContainer("Parry Add CompliSound Mordhau Longsword", "0CompliSoundEmporium.rte");
 	self.BlockSFX.HeavyBlockAdd = CreateSoundContainer("Heavy Block Add CompliSound Mordhau Longsword", "0CompliSoundEmporium.rte");
 	
-	-- Sound for being disarmed if it's enabled.
+	-- Sound for being disarmed if it's enabled. Follows the weapon.
 	self.DisarmSound = CreateSoundContainer("Disarm CompliSound Mordhau Longsword");
 
 	-----------------
-	----------------- Regular inputtable PhaseSets
+	----------------- PhaseSets
 	-----------------	
 	
 	-- PhaseSet to trigger when block is inputted (reload button)
-	-- A sane block should include a canBeHeld phase that blocksAttacks, but this is not required. You can do whatever
+	-- A sane block should include a short parriesAttacks phase and a canBeHeld phase that blocksAttacks, but this is not required. You can do whatever
 	-- you like, including making a block that only parries for a short period of time before returning.
-	-- Please note that due to current input limitations, canBeHeld can only be triggered by the three inputs below,
-	-- and reload cannot currently be held to hold block.
 	self.BlockInputPhaseSetName = "Block PhaseSet";
 	
 	-- PhaseSet to trigger when regular weapon fire is inputted
@@ -177,12 +183,17 @@ function Create(self)
 								   "Overhead PhaseSet",
 	};
 	
+	-- PhaseSet that triggers when parried - should look like being deflected.
+	-- This is a regular PhaseSet, so unless you want this weapon greatly nullified when parried,
+	-- you should make sure the phases in it canBeBlockCancelled.
+	self.ParriedReactionPhaseSetName = "Parried Reaction PhaseSet";
+	
 	-- PhaseSet to trigger when an actor equips this from inventory.
 	-- Doesn't trigger when being picked up from the ground.
 	self.EquipPhaseSetName = "Equip PhaseSet";
 	
 	-----------------
-	----------------- PhaseSets
+	----------------- PhaseSet definitions
 	-----------------	
 
 	-- A "PhaseSet" is a full animation that plays out. It can do a lot of things - attack, be blocked, block attacks, etc.
@@ -201,6 +212,10 @@ function Create(self)
 	-- Whether this PhaseSet can be combod into if played during another PhaseSet.
 	-- False here will basically ignore input into it if anything except idle.
 	phaseSet.canBeCombodInto = true;
+	-- The name of the PhaseSet to go to instead if the same input that caused this PhaseSet is done again. Can be used to create combos
+	-- of different PhaseSets, making your attack strings more interesting.
+	-- If nil, will just repeat itself as expected.
+	phaseSet.sameInputComboPhaseSet = "Slash 2 PhaseSet";
 	-- Whether this is a dedicated blocking PhaseSet or not. This should NOT be set true for anything
 	-- that happens to have a phase that can block attacks, but the one you'll mainly be using to block (like the one on your block input).
 	-- Blocking phasesets canBeHeld by holding reload (as opposed to attack input), and cannot be flinched out of.
@@ -639,7 +654,421 @@ function Create(self)
 	Phase.rayTerrainRangeMultiplier = 0;
 	Phase.rayAngle = 0;
 	
+	Phase.frameStart = 3;
+	Phase.frameEnd = 0;
+	Phase.frameEasingFunc = self.EaseLinear;
+	
+	Phase.rotationSpeed = 0.3;	
+	Phase.angleStart = 45;
+	Phase.angleEnd = -25;
+	Phase.angleEasingFunc = self.EaseLinear;
+	
+	Phase.stanceOffsetSpeed = 1;	
+	Phase.stanceOffsetStart = Vector(-5, -4);
+	Phase.stanceOffsetEnd = Vector(0, 0);
+	Phase.stanceEasingFunc = self.EaseLinear;
+	
+	Phase.jointOffsetSpeed = 1;
+	Phase.jointOffset = Vector(0, 10);
+	Phase.supportOffsetSpeed = 1;
+	Phase.supportOffset = Vector(-1, 14);
+	
+	Phase.soundStart = nil;
+	Phase.soundStartStopsOnHit = false;
+	Phase.soundEnd = nil;
+	
+	Phase.enterPhaseCallback = function (self)
+		
+	end
+	Phase.constantCallback = function (self)
+		
+	end
+	Phase.exitPhaseCallback = function (self)
+		
+	end
+	
+	self.PhaseSets[phaseSetIndex].Phases[phaseIndex] = Phase;
+	
+	------------------------------------------------------------------------------
+	---------------------------------PHASESET-------------------------------------
+	------------------------------------------------------------------------------
+	
+	local phaseSetIndex = phaseSetIndex + 1;
+	local phaseSet = {};
+	
+	phaseSet.Name = "Slash 2 PhaseSet";
+	phaseSet.canBeCombodInto = true;
+	phaseSet.sameInputComboPhaseSet = "Slash PhaseSet";
+	phaseSet.isBlockingPhaseSet = false;
+	phaseSet.isAttackingPhaseSet = true;
+	phaseSet.HFlipSwitchLimit = 3;
+	phaseSet.AIRange = 45;
+	phaseSet.Phases = {};
+	
+	self.PhaseSets[phaseSetIndex] = phaseSet;
+	
+	----------------------------------PHASE---------------------------------------
+	
+	local phaseIndex = 1;
+	local Phase = {};
+	
+	Phase.Name = "Slash 2 Prepare";
+	Phase.Duration = 200;
+	
+	Phase.parriesAttacks = false;
+	Phase.blocksAttacks = false;
+	Phase.canBeHeld = true;
+	Phase.canBeBlockCancelled = true;
+	Phase.allowsPhaseSetBuffering = false;
+	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
+	
+	Phase.canBeBlocked = false;
+	Phase.doesDamage = false;
+	Phase.attackType = "None";
+	Phase.Cleaves = false;
+	Phase.isInterruptableByTerrain = false;
+	Phase.Damage = 0.0;
+	Phase.woundDamageMultiplier = 0.0;
+	Phase.dismemberInsteadOfGibbing = false;
+	Phase.rayVecFirstPos = Vector(0, 0);
+	Phase.rayVecSecondPos = Vector(0, 0);
+	Phase.rayDensity = 0;
+	Phase.rayRange = 0;
+	Phase.rayTerrainRangeMultiplier = 0;
+	Phase.rayAngle = 0;
+	
+	Phase.frameStart = 16;
+	Phase.frameEnd = 16;
+	Phase.frameEasingFunc = self.EaseLinear;
+	
+	Phase.rotationSpeed = 0.4;
+	Phase.angleStart = -90;
+	Phase.angleEnd = -100;
+	Phase.angleEasingFunc = self.EaseInOutCubic;
+	
+	Phase.stanceOffsetSpeed = 1;	
+	Phase.stanceOffsetStart = Vector(0, -15);
+	Phase.stanceOffsetEnd = Vector(-15, -15);
+	Phase.stanceEasingFunc = self.EaseLinear;
+	
+	Phase.jointOffsetSpeed = 1;
+	Phase.jointOffset = Vector(0, 10);
+	Phase.supportOffsetSpeed = 1;
+	Phase.supportOffset = Vector(-1, 14);
+	
+	Phase.soundStart = nil;
+	Phase.soundStartStopsOnHit = false;
+	Phase.soundEnd = nil;
+	
+	Phase.enterPhaseCallback = function (self)
+		
+	end
+	Phase.constantCallback = function (self)
+		self.Frame = math.min(16, self.Frame + 8);
+	end
+	Phase.exitPhaseCallback = function (self)
+		
+	end
+	
+	self.PhaseSets[phaseSetIndex].Phases[phaseIndex] = Phase;
+	
+	----------------------------------PHASE---------------------------------------
+	
+	phaseIndex = phaseIndex + 1;
+	Phase = {};
+	
+	Phase.Name = "Slash 2 Late Prepare";
+	Phase.Duration = 100;
+	
+	Phase.parriesAttacks = false;
+	Phase.blocksAttacks = false;
+	Phase.canBeHeld = false;
+	Phase.canBeBlockCancelled = false;
+	Phase.allowsPhaseSetBuffering = false;
+	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
+	
+	Phase.canBeBlocked = true;
+	Phase.doesDamage = false;
+	Phase.attackType = "None";
+	Phase.Cleaves = false;
+	Phase.isInterruptableByTerrain = false;
+	Phase.Damage = 0.0;
+	Phase.woundDamageMultiplier = 0.0;
+	Phase.dismemberInsteadOfGibbing = false;
+	Phase.rayVecFirstPos = Vector(-1, 4);
+	Phase.rayVecSecondPos = Vector(1, 4);
+	Phase.rayDensity = 3;
+	Phase.rayRange = 13;
+	Phase.rayTerrainRangeMultiplier = 0.5;
+	Phase.rayAngle = 100;
+	
+	Phase.frameStart = 15;
+	Phase.frameEnd = 13;
+	Phase.frameEasingFunc = self.EaseLinear;
+	
+	Phase.rotationSpeed = 0.7;	
+	Phase.angleStart = -100;
+	Phase.angleEnd = -80;
+	Phase.angleEasingFunc = self.EaseLinear;
+	
+	Phase.stanceOffsetSpeed = 1;	
+	Phase.stanceOffsetStart = Vector(-15, -15);
+	Phase.stanceOffsetEnd = Vector(2, -14);
+	Phase.stanceEasingFunc = self.EaseLinear;
+	
+	Phase.jointOffsetSpeed = 1;
+	Phase.jointOffset = Vector(0, 10);
+	Phase.supportOffsetSpeed = 1;
+	Phase.supportOffset = Vector(-1, 14);
+	
+	Phase.soundStart = CreateSoundContainer("Slash Whoosh CompliSound Mordhau Longsword", "0CompliSoundEmporium.rte");
+	Phase.soundStartStopsOnHit = true;
+	Phase.soundEnd = nil;
+	
+	Phase.enterPhaseCallback = function (self)
+		
+	end
+	Phase.constantCallback = function (self)
+		
+	end
+	Phase.exitPhaseCallback = function (self)
+		
+	end
+	
+	self.PhaseSets[phaseSetIndex].Phases[phaseIndex] = Phase;
+	
+	----------------------------------PHASE---------------------------------------
+	
+	phaseIndex = phaseIndex + 1;
+	Phase = {};
+	
+	Phase.Name = "Slash 2 Attack";
+	Phase.Duration = 150;
+	
+	Phase.parriesAttacks = false;
+	Phase.blocksAttacks = false;
+	Phase.canBeHeld = false;
+	Phase.canBeBlockCancelled = false;
+	Phase.allowsPhaseSetBuffering = true;
+	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = false;
+	
+	Phase.canBeBlocked = true;
+	Phase.doesDamage = true;
+	Phase.attackType = "Slash";
+	Phase.isInterruptableByTerrain = true;
+	Phase.Cleaves = false;
+	Phase.Damage = 1.0;
+	Phase.woundDamageMultiplier = 7.0;
+	Phase.dismemberInsteadOfGibbing = true;
+	Phase.rayVecFirstPos = Vector(-1, 4);
+	Phase.rayVecSecondPos = Vector(1, 4);
+	Phase.rayDensity = 3;
+	Phase.rayRange = 18;
+	Phase.rayTerrainRangeMultiplier = 0.5;
+	Phase.rayAngle = 90;
+	
+	Phase.frameStart = 13;
+	Phase.frameEnd = 7;
+	Phase.frameEasingFunc = self.EaseInOutCubic;
+	
+	Phase.rotationSpeed = 1.0;	
+	Phase.angleStart = -80;
+	Phase.angleEnd = -55;
+	Phase.angleEasingFunc = self.EaseInOutCubic;
+	
+	Phase.stanceOffsetSpeed = 1;	
+	Phase.stanceOffsetStart = Vector(2, -14);
+	Phase.stanceOffsetEnd = Vector(18, -17);
+	Phase.stanceEasingFunc = self.EaseLinear;
+	
+	Phase.jointOffsetSpeed = 1;
+	Phase.jointOffset = Vector(0, 10);
+	Phase.supportOffsetSpeed = 1;
+	Phase.supportOffset = Vector(-1, 14);
+	
+	Phase.soundStart = nil;
+	Phase.soundStartStopsOnHit = false;
+	Phase.soundEnd = nil;
+	
+	Phase.enterPhaseCallback = function (self)
+		
+	end
+	Phase.constantCallback = function (self)
+		
+	end
+	Phase.exitPhaseCallback = function (self)
+		
+	end
+	
+	self.PhaseSets[phaseSetIndex].Phases[phaseIndex] = Phase;
+	
+	----------------------------------PHASE---------------------------------------
+	
+	phaseIndex = phaseIndex + 1;
+	Phase = {};
+	
+	Phase.Name = "Slash 2 Early Rebound";
+	Phase.Duration = 150;
+	
+	Phase.parriesAttacks = false;
+	Phase.blocksAttacks = false;
+	Phase.canBeHeld = false;
+	Phase.canBeBlockCancelled = false;
+	Phase.allowsPhaseSetBuffering = true;
+	Phase.canComboOut = false;
+	Phase.isAfterFinalAttackPhase = true;
+	
+	Phase.canBeBlocked = false;
+	Phase.doesDamage = false;
+	Phase.attackType = "None";
+	Phase.Cleaves = false;
+	Phase.isInterruptableByTerrain = false;
+	Phase.Damage = 0.0;
+	Phase.woundDamageMultiplier = 0.0;
+	Phase.dismemberInsteadOfGibbing = false;
+	Phase.rayVecFirstPos = Vector(0, 0);
+	Phase.rayVecSecondPos = Vector(0, 0);
+	Phase.rayDensity = 0;
+	Phase.rayRange = 0;
+	Phase.rayTerrainRangeMultiplier = 0;
+	Phase.rayAngle = 0;
+	
+	Phase.frameStart = 7;
+	Phase.frameEnd = 6;
+	Phase.frameEasingFunc = self.EaseOutCubic;
+	
+	Phase.rotationSpeed = 1.0;	
+	Phase.angleStart = -55;
+	Phase.angleEnd = 25;
+	Phase.angleEasingFunc = self.EaseInOutCubic;
+	
+	Phase.stanceOffsetSpeed = 1;	
+	Phase.stanceOffsetStart = Vector(15, -17);
+	Phase.stanceOffsetEnd = Vector(-7, -7);
+	Phase.stanceEasingFunc = self.EaseLinear;
+	
+	Phase.jointOffsetSpeed = 1;
+	Phase.jointOffset = Vector(0, 10);
+	Phase.supportOffsetSpeed = 1;
+	Phase.supportOffset = Vector(-1, 14);
+	
+	Phase.soundStart = nil;
+	Phase.soundStartStopsOnHit = false;
+	Phase.soundEnd = nil;
+	
+	Phase.enterPhaseCallback = function (self)
+		
+	end
+	Phase.constantCallback = function (self)
+		
+	end
+	Phase.exitPhaseCallback = function (self)
+		
+	end
+	
+	self.PhaseSets[phaseSetIndex].Phases[phaseIndex] = Phase;
+	
+	----------------------------------PHASE---------------------------------------
+	
+	phaseIndex = phaseIndex + 1;
+	Phase = {};
+	
+	Phase.Name = "Slash 2 Late Rebound";
+	Phase.Duration = 200;
+	
+	Phase.parriesAttacks = false;
+	Phase.blocksAttacks = false;
+	Phase.canBeHeld = false;
+	Phase.canBeBlockCancelled = true;
+	Phase.allowsPhaseSetBuffering = true;
+	Phase.canComboOut = true;
+	Phase.isAfterFinalAttackPhase = true;
+	
+	Phase.canBeBlocked = false;
+	Phase.doesDamage = false;
+	Phase.attackType = "None";
+	Phase.Cleaves = false;
+	Phase.isInterruptableByTerrain = false;
+	Phase.Damage = 0.0;
+	Phase.woundDamageMultiplier = 0.0;
+	Phase.dismemberInsteadOfGibbing = false;
+	Phase.rayVecFirstPos = Vector(0, 0);
+	Phase.rayVecSecondPos = Vector(0, 0);
+	Phase.rayDensity = 0;
+	Phase.rayRange = 0;
+	Phase.rayTerrainRangeMultiplier = 0;
+	Phase.rayAngle = 0;
+	
 	Phase.frameStart = 6;
+	Phase.frameEnd = 3;
+	Phase.frameEasingFunc = self.EaseLinear;
+	
+	Phase.rotationSpeed = 0.7;	
+	Phase.angleStart = 25;
+	Phase.angleEnd = 45;
+	Phase.angleEasingFunc = self.EaseLinear;
+	
+	Phase.stanceOffsetSpeed = 1;	
+	Phase.stanceOffsetStart = Vector(-7, -7);
+	Phase.stanceOffsetEnd = Vector(-5, -4);
+	Phase.stanceEasingFunc = self.EaseLinear;
+	
+	Phase.jointOffsetSpeed = 1;
+	Phase.jointOffset = Vector(0, 10);
+	Phase.supportOffsetSpeed = 1;
+	Phase.supportOffset = Vector(-1, 14);
+	
+	Phase.soundStart = nil;
+	Phase.soundStartStopsOnHit = false;
+	Phase.soundEnd = nil;
+	
+	Phase.enterPhaseCallback = function (self)
+		
+	end
+	Phase.constantCallback = function (self)
+		
+	end
+	Phase.exitPhaseCallback = function (self)
+		
+	end
+	
+	self.PhaseSets[phaseSetIndex].Phases[phaseIndex] = Phase;
+	
+	----------------------------------PHASE---------------------------------------
+	
+	phaseIndex = phaseIndex + 1;
+	Phase = {};
+	
+	Phase.Name = "Slash 2 Recover";
+	Phase.Duration = 450;
+	
+	Phase.parriesAttacks = false;
+	Phase.blocksAttacks = false;
+	Phase.canBeHeld = false;
+	Phase.canBeBlockCancelled = true;
+	Phase.allowsPhaseSetBuffering = true;
+	Phase.canComboOut = true;
+	Phase.isAfterFinalAttackPhase = true;
+	
+	Phase.canBeBlocked = false;
+	Phase.doesDamage = false;
+	Phase.attackType = "None";
+	Phase.Cleaves = false;
+	Phase.isInterruptableByTerrain = false;
+	Phase.Damage = 0.0;
+	Phase.woundDamageMultiplier = 0.0;
+	Phase.dismemberInsteadOfGibbing = false;
+	Phase.rayVecFirstPos = Vector(0, 0);
+	Phase.rayVecSecondPos = Vector(0, 0);
+	Phase.rayDensity = 0;
+	Phase.rayRange = 0;
+	Phase.rayTerrainRangeMultiplier = 0;
+	Phase.rayAngle = 0;
+	
+	Phase.frameStart = 3;
 	Phase.frameEnd = 0;
 	Phase.frameEasingFunc = self.EaseLinear;
 	
@@ -683,6 +1112,7 @@ function Create(self)
 	
 	phaseSet.Name = "Stab PhaseSet";
 	phaseSet.canBeCombodInto = true;
+	phaseSet.sameInputComboPhaseSet = nil;
 	phaseSet.isBlockingPhaseSet = false;
 	phaseSet.isAttackingPhaseSet = true;
 	phaseSet.HFlipSwitchLimit = 3;
@@ -964,6 +1394,7 @@ function Create(self)
 	
 	phaseSet.Name = "Overhead PhaseSet";
 	phaseSet.canBeCombodInto = true;
+	phaseSet.sameInputComboPhaseSet = nil;
 	phaseSet.isBlockingPhaseSet = false;
 	phaseSet.isAttackingPhaseSet = true;
 	phaseSet.HFlipSwitchLimit = 3;
@@ -1180,6 +1611,7 @@ function Create(self)
 	
 	phaseSet.Name = "Block PhaseSet";
 	phaseSet.canBeCombodInto = true;
+	phaseSet.sameInputComboPhaseSet = nil;
 	phaseSet.isBlockingPhaseSet = true;
 	phaseSet.isAttackingPhaseSet = false;
 	phaseSet.HFlipSwitchLimit = -1;
@@ -1461,6 +1893,7 @@ function Create(self)
 	
 	phaseSet.Name = "Parried Reaction PhaseSet";
 	phaseSet.canBeCombodInto = true;
+	phaseSet.sameInputComboPhaseSet = nil;
 	phaseSet.isBlockingPhaseSet = false;
 	phaseSet.isAttackingPhaseSet = false;
 	phaseSet.HFlipSwitchLimit = -1;
@@ -1610,6 +2043,7 @@ function Create(self)
 	
 	phaseSet.Name = "Equip PhaseSet";
 	phaseSet.canBeCombodInto = false;
+	phaseSet.sameInputComboPhaseSet = nil;
 	phaseSet.isBlockingPhaseSet = false;
 	phaseSet.isAttackingPhaseSet = false;
 	phaseSet.HFlipSwitchLimit = -1;

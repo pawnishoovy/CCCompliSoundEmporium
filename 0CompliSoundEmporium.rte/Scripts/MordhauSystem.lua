@@ -12,20 +12,23 @@ function OnMessage(self, message, object)
 				self.CurrentPhaseData.allowsPhaseSetBuffering = true;
 				self.CurrentPhaseData.canComboOut = true;
 				self:SetNumberValue("Mordhau_AIParriedAnAttack", 1);			
+				
+				-- Block stamina, multiply then add flat reward
 				self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + self.BlockStaminaParryReward);
+				self.BlockStamina = self.BlockStamina - ((5 * object.attackDamage * object.attackWoundDamageMultiplier) * self.BlockStaminaTakenDamageMultiplier * self.BlockStaminaParryDamageMultiplier);		
 			elseif self.CurrentPhaseData.blocksAttacks then
 				self.BlockFXFunction(self, object.attackType, object.hitPos);
 				self:SetNumberValue("Mordhau_AIBlockedAnAttack", 1);
 				self.DoBlockAnim = true;
-				self.BlockStamina = self.BlockStamina - ((5 * object.attackDamage * object.attackWoundDamageMultiplier) * self.BlockStaminaTakenDamageMultiplier);
-				self.BlockStaminaRegenDelayTimer:Reset();
+				
+				-- Out of stam blocking
 				if self.BlockStaminaEnabled and self.BlockStamina < (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) and self.Parent then
 					messageTable.blockType = "NoStaminaBlocked";
 					messageTable.noStaminaDamageMultiplier = self.BlockStaminaNoStaminaDamageMultiplier;
 					MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", messageTable);
-					
-					-- 20% grace amount for disarming
-					if self.BlockStaminaDisarmInsteadOfNullifyingBlock and self.BlockStamina < ((self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) - (self.BlockStaminaMaximum * 0.2)) then
+
+					-- Disarming
+					if self.BlockStaminaDisarmBelowThreshold and self.BlockStamina < (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) then
 						local vel = self.Parent.Vel;
 						self:RemoveFromParent(true, true);
 						self.Vel = vel + Vector(-5 * self.FlipFactor, -10);
@@ -35,9 +38,13 @@ function OnMessage(self, message, object)
 						end
 					end
 				else
+					-- Regular blocking
 					messageTable.blockType = "Blocked";
 					MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", "Blocked");
 				end
+				
+				self.BlockStamina = self.BlockStamina - ((5 * object.attackDamage * object.attackWoundDamageMultiplier) * self.BlockStaminaTakenDamageMultiplier);
+				self.BlockStaminaRegenDelayTimer:Reset();
 				self.BlockStamina = math.max(0, self.BlockStamina);
 			end
 		end
@@ -233,11 +240,14 @@ function Create(self)
 	
 	self.BlockStaminaRegenDelayTimer = Timer();
 	
-	self.BlockStaminaRegenDelay = 500;
+	self.BlockStaminaRegenDelay = 3000;
+	
+	self:SetNumberValue("Mordhau_AIBlockStaminaPercentage", 1);
 	
 	self.EffectiveWoundCount = self:NumberValueExists("Mordhau_EffectiveWoundCount") and self:GetNumberValue("Mordhau_EffectiveWoundCount") or self.WoundCount;
 	self:RemoveNumberValue("Mordhau_EffectiveWoundCount");
 	
+	-- We use EffectiveWoundCount and the stats-defined RealGibWoundLimit instead.
 	self.GibWoundLimit = 999;
 	
 	self.LastWoundCount = self.WoundCount;
@@ -252,6 +262,7 @@ function Create(self)
 		self.PhaseSetIndexForName[v.Name] = k;
 	end
 	
+	-- Defaults.
 	self.PhaseTimer = Timer();
 	self.CurrentPhaseSet = 1;
 	self.CurrentPhase = 1;
@@ -260,17 +271,31 @@ function Create(self)
 	
 	self.HFlipSwitches = 0;
 	
+	-- Keep track of the PhaseSet name input that caused our current PhaseSet so we can use sameInputComboPhaseSet if appropriate.
+	self.CurrentPhaseSetInput = nil;
+	
+	self.ResetCurrentPhaseSetInputAfterBuffer = false;
+	
 	-----------------
 	----------------- Animation
 	-----------------
+	
+	-- Temporary stance offsets. Reset every frame.
+	self.HorizontalAnim = 0;
+	self.VerticalAnim = 0;
 
 	self.OriginalJointOffset = Vector(math.abs(self.JointOffset.X), self.JointOffset.Y);
 	self.OriginalSupportOffset = Vector(math.abs(self.SupportOffset.X), self.SupportOffset.Y);
 	self.OriginalStanceOffset = Vector(math.abs(self.StanceOffset.X), self.StanceOffset.Y)
 	
+	-- Rotational input into the animation system. Resets every frame, has nothing to do with vanilla AngularVel.
+	self.AngVel = 0;
+	
 	self.RotationSpeed = self.IdleRotationSpeed;
 	self.RotationTarget = 0;
 	self.Rotation = 0;
+	
+	-- Manual modifier for RotationTarget for custom use, not reset ever.
 	self.RotationTargetManualAddition = 0;
 	
 	self.JointOffsetSpeed = 15;
@@ -279,6 +304,7 @@ function Create(self)
 	self.SupportOffsetSpeed = 15;
 	self.SupportOffsetTarget = self.OriginalSupportOffset;
 	
+	-- Neater to have a separate variable for our original-relative stance setting.
 	self.MordhauStanceOffset = Vector(0, 0);
 	self.StanceOffsetSpeed = 15;
 	self.StanceOffsetTarget = self.OriginalStanceOffset;
@@ -307,6 +333,7 @@ function OnAttach(self, newParent)
 		end
 		
 		self.BlockStamina = self.BlockStaminaMaximum;
+		self:SetNumberValue("Mordhau_AIBlockStaminaPercentage", 1);
 		
 		self.HUDVisible = false;
 	end
@@ -526,6 +553,12 @@ function ThreadedUpdate(self)
 				if aiAttackPhaseSetName then
 					self.BufferedPhaseSet = aiAttackPhaseSetName;
 				end
+				-- If we buffered our current PhaseSet again and it has a sameInputComboPhaseSet, use that instead, and keep the same input for later
+				if self.BufferedPhaseSet == self.CurrentPhaseSetInput and self.PhaseSets[self.CurrentPhaseSet].sameInputComboPhaseSet then
+					self.BufferedPhaseSet = self.PhaseSets[self.CurrentPhaseSet].sameInputComboPhaseSet;
+				elseif self.BufferedPhaseSet and self.BufferedPhaseSet ~= self.PhaseSets[self.CurrentPhaseSet].sameInputComboPhaseSet then
+					self.ResetCurrentPhaseSetInputAfterBuffer = true;
+				end
 			else
 				self.BufferedPhaseSet = false;
 			end
@@ -609,8 +642,12 @@ function ThreadedUpdate(self)
 			self.CurrentPhaseData.constantCallback(self);
 		
 			if self.PhaseSetWasParried then
-				self.BufferedPhaseSet = "Parried Reaction PhaseSet";
+				self.BufferedPhaseSet = self.ParriedReactionPhaseSetName and self.ParriedReactionPhaseSetName or nil;
+				self.CurrentPhaseData.allowsPhaseSetBuffering = true;
 				self.CurrentPhaseData.canComboOut = true;
+				if not self.BufferedPhaseSet then
+					self.PlayingPhaseSet = false;
+				end
 				self.ParriedCooldownTimer:Reset();
 			end
 			
@@ -637,6 +674,10 @@ function ThreadedUpdate(self)
 					pseudoPhase.SupportOffsetStart = self.supportOffsetTarget;
 					
 					self.CurrentPhaseData = pseudoPhase;
+					
+					if self.ResetCurrentPhaseSetInputAfterBuffer then
+						self.CurrentPhaseSetInput = self.BufferedPhaseSet;
+					end
 
 					self.CurrentPhaseEndSoundPlayed = false;
 					self.CurrentPhaseStartSoundPlayed = false;
@@ -647,6 +688,7 @@ function ThreadedUpdate(self)
 					end
 				end
 				
+				self.ResetCurrentPhaseSetInputAfterBuffer = false;
 				self.BufferedPhaseSet = nil
 			end
 			
@@ -691,7 +733,17 @@ function ThreadedUpdate(self)
 				-- Block cancelling - this is instant, so we do it here so nothing complains about missing CurrentPhaseData
 				if self.CurrentPhaseData.canBeBlockCancelled then
 					if reloadInput then
-						playPhaseSet(self, self.BlockInputPhaseSetName);
+						if self.BlockStaminaEnabled then
+							if self.BlockStamina > self.BlockStaminaBlockCancelCost then
+								self.BlockStamina = self.BlockStamina - self.BlockStaminaBlockCancelCost;
+								if self.BlockStaminaBlockCancelCost > 0 then
+									self.BlockStaminaRegenDelayTimer:Reset();
+								end
+								playPhaseSet(self, self.BlockInputPhaseSetName);
+							end
+						else
+							playPhaseSet(self, self.BlockInputPhaseSetName);
+						end
 					end
 				end			
 			end
@@ -708,23 +760,28 @@ function ThreadedUpdate(self)
 				if isPlayerControlled then
 					if primaryInput then
 						playPhaseSet(self, self.PrimaryInputPhaseSetName);
+						self.CurrentPhaseSetInput = self.PrimaryInputPhaseSetName;
 					end
 					if primaryHotkeyInput then
 						playPhaseSet(self, self.PrimaryHotkeyInputPhaseSetName);
+						self.CurrentPhaseSetInput = self.PrimaryHotkeyInputPhaseSetName;
 					end
 					if auxiliaryHotkeyInput then
 						playPhaseSet(self, self.AuxiliaryHotkeyInputPhaseSetName);
+						self.CurrentPhaseSetInput = self.AuxiliaryHotkeyInputPhaseSetName;
 					end
 				else
 					-- AI inputs via StringValue above
 					if aiAttackPhaseSetName then
 						playPhaseSet(self, aiAttackPhaseSetName);
+						self.CurrentPhaseSetInput = aiAttackPhaseSetName;
 					end
 				end
 			end
 			
 			if reloadInput then
 				playPhaseSet(self, self.BlockInputPhaseSetName);
+				self.CurrentPhaseSetInput = self.BlockInputPhaseSetName;
 			end
 			
 			self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyAttacking");
@@ -734,8 +791,14 @@ function ThreadedUpdate(self)
 		
 		-- Block stamina
 		if self.BlockStaminaRegenDelayTimer:IsPastSimMS(self.BlockStaminaRegenDelay) then
-			self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + TimerMan.DeltaTimeSecs * self.BlockStaminaRegenRate);
+			local regenRate = self.BlockStaminaRegenRate;
+			if self.CurrentPhaseData and self.CurrentPhaseData.blocksAttacks then
+				regenRate = self.BlockStaminaRegenRate * self.BlockStaminaBlockingRegenMultiplier;
+			end
+			self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + TimerMan.DeltaTimeSecs * regenRate);
 		end
+		
+		self:SetNumberValue("Mordhau_AIBlockStaminaPercentage", (self.BlockStamina - (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier)) / (self.BlockStaminaMaximum));
 		
 		-- Block stamina bar
 		if (isPlayerControlled or self.DrawBlockStaminaBarForAI) and self.BlockStaminaEnabled and self.DrawBlockStaminaBar then
@@ -756,8 +819,7 @@ function ThreadedUpdate(self)
 
 			PrimitiveMan:DrawBoxFillPrimitive(hudOrigin + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), hudOrigin + Vector(hudBarWidthOutline * 0.5, hudBarHeight * 0.5), hudBarColorBG);
 			PrimitiveMan:DrawBoxFillPrimitive(hudOrigin + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), hudOrigin + Vector(hudBarWidthOutline * -0.5 + hudBarWidth, hudBarHeight * 0.5), hudBarColor);
-			PrimitiveMan:DrawBoxPrimitive(hudOrigin + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), hudOrigin + Vector(hudBarWidthOutline * 0.5, hudBarHeight * 0.5), hudBarColorOutline)
-			
+			PrimitiveMan:DrawBoxPrimitive(hudOrigin + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), hudOrigin + Vector(hudBarWidthOutline * 0.5, hudBarHeight * 0.5), hudBarColorOutline)	
 		end
 		
 		-- Animation

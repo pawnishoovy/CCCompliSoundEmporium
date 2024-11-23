@@ -35,7 +35,7 @@ end
 function Create(self)
 	
 	self.MeleeAI = {}
-	self.MeleeAI.debug = true;
+	self.MeleeAI.debug = true
 	self.MeleeAI.active = false;
 
 	-- Skill decides how fast the AI attacks, how fast it reacts to attacks, how often it tries to parry.
@@ -50,7 +50,7 @@ function Create(self)
 	-- Percentage of the time that, after any block, AI will try to parry next time it blocks.
 	self.MeleeAI.parryChance = 90 * self.MeleeAI.skill; --%
 	-- Whether the next block is going to be attempted as a parry. This means that block will be inputted only when the opponent weapon is actually blockable.
-	self.MeleeAI.attemptingParry = false;
+	self.MeleeAI.attemptingParry = math.random(0, 100) < self.MeleeAI.parryChance;
 	self.MeleeAI.attemptingParryMaxWaitTimer = Timer();
 	self.MeleeAI.attemptingParryMaxWaitTime = 2000;
 	
@@ -81,10 +81,11 @@ function Create(self)
 	
 	-- Blocking parameters.
 	self.MeleeAI.blocking = false
-	self.MeleeAI.blockingDelayMax = 600 * (0.15 + 0.85 * (1 - self.MeleeAI.skill))
+	self.MeleeAI.blockingDelayMax = 600 * (0.05 + 0.95 * (1 - self.MeleeAI.skill))
 	self.MeleeAI.blockingDelay = self.MeleeAI.blockingDelayMax * 0.05
 	self.MeleeAI.blockingDelayTimer = Timer()
 	
+	-- I don't really know how this works. Fil made it. It probably does something.
 	self.MeleeAI.attacking = false
 	self.MeleeAI.attackOpportunityMissThreshold = 0
 	self.MeleeAI.attackOpportunityMissThresholdGain = 15 * (1 - self.MeleeAI.skill)
@@ -287,7 +288,7 @@ function ThreadedUpdateAI(self)
 						if RangeRand(0, 100) < self.MeleeAI.attackOpportunityMissThreshold and not postBlockAggression then -- Attack miss Threshold handling
 							self.MeleeAI.attackOpportunityMissThreshold = -self.MeleeAI.attackOpportunityMissThresholdGain
 							self.MeleeAI.attackOpportunityMissTimer:Reset()
-						elseif distanceToTarget < (nextAttackRange + 30) or postBlockAggression then
+						elseif distanceToTarget < (nextAttackRange) or postBlockAggression then
 							-- Make sure we don't accidentally block
 							self.MeleeAI.controller:SetState(Controller.WEAPON_RELOAD, false);
 							self.MeleeAI.weapon:RemoveNumberValue("Mordhau_AIBlockInput");			
@@ -386,8 +387,12 @@ function ThreadedUpdateAI(self)
 			-- Look around
 			
 			-- tryingToBlock implies we have targetWeapon
-			self.MeleeAI.controller.AnalogAim = (tryingToBlock and not self.MeleeAI.weapon:NumberValueExists("Mordhau_AIWeaponCurrentlyAttacking")) and SceneMan:ShortestDistance(self.Pos, targetWeapon.Pos, SceneMan.SceneWrapsX).Normalized 
+			self.MeleeAI.controller.AnalogAim = (tryingToBlock and not self.MeleeAI.weapon:NumberValueExists("Mordhau_AIWeaponCurrentlyAttacking")) and SceneMan:ShortestDistance(self.Head.Pos, targetWeapon.Pos, SceneMan.SceneWrapsX).Normalized 
 			or (dist.Normalized);
+			
+			if self.MeleeAI.debug then
+				PrimitiveMan:DrawLinePrimitive(self.Head.Pos, self.Head.Pos + self.MeleeAI.controller.AnalogAim * 100, 13);
+			end
 			
 			-- Face our target pls
 			if dist.X < 0 then

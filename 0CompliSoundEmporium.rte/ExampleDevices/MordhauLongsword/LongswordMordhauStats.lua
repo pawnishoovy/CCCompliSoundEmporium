@@ -43,6 +43,9 @@ function Create(self)
 	----------------- Melee
 	-----------------
 	
+	-- Whether this weapon stops enemy attacks when it hits or not.
+	self.FlinchesOnHit = true;
+	
 	-- Lockout in MS from doing anything but block input after being flinched by being hit by melee.
 	self.FlinchCooldown = 500;	
 	-- Lockout in MS from doing anything but block input after being parried. This ticks along during Parried Reaction, so if
@@ -75,13 +78,14 @@ function Create(self)
 	self.BlockStaminaBlockCancelCost = 15;
 	-- Whether to show weapon stamina above the holder, if player controlled. Recommended on.
 	self.DrawBlockStaminaBar = true;
-	-- Whether to show weapon stamina above the holder for AI as well. Does nothing if DrawBlockStaminaBar isn't on. Recommended off.
-	self.DrawBlockStaminaBarForAI = true;
+	-- Whether to show weapon stamina above the holder for AI as well. Does nothing if DrawBlockStaminaBar isn't on.
+	self.DrawBlockStaminaBarForAI = false;
 	
 	-- Whether phases that can block attacks will also block bullets. If this is true, will turn off bullet collisions when not blocking.
 	-- Leave false if you want MordhauSystem to not touch GetsHitByMOsWhileHeld.
 	self.CanBlockBullets = true;
 	-- If this is true, parried bullets will be nullified and not hurt the weapon. Does not require CanBlockBullets.
+	-- Leave false if you want MordhauSystem to not touch GetsHitByMOsWhileHeld.
 	self.CanParryBullets = true;
 	-- Intended GibWoundLimit. Save/loading coupled with potential wound manipulation can mess up the internal counter, so we need this.
 	-- Note that the "fake" gib wound limit is 999, so your weapon is not nigh invincible (unless you change it yourself)
@@ -462,7 +466,7 @@ function Create(self)
 	
 	Phase.rotationSpeed = 1.0;	
 	Phase.angleStart = -60;
-	Phase.angleEnd = -100;
+	Phase.angleEnd = -85;
 	Phase.angleEasingFunc = self.EaseInOutCubic;
 	
 	Phase.stanceOffsetSpeed = 1;	
@@ -527,7 +531,7 @@ function Create(self)
 	Phase.frameEasingFunc = self.EaseOutCubic;
 	
 	Phase.rotationSpeed = 1.0;	
-	Phase.angleStart = -100;
+	Phase.angleStart = -85;
 	Phase.angleEnd = -140;
 	Phase.angleEasingFunc = self.EaseInOutCubic;
 	
@@ -738,18 +742,18 @@ function Create(self)
 	Phase.rayTerrainRangeMultiplier = 0;
 	Phase.rayAngle = 0;
 	
-	Phase.frameStart = 16;
-	Phase.frameEnd = 16;
+	Phase.frameStart = 4;
+	Phase.frameEnd = 4;
 	Phase.frameEasingFunc = self.EaseLinear;
 	
-	Phase.rotationSpeed = 0.4;
-	Phase.angleStart = -90;
-	Phase.angleEnd = -100;
+	Phase.rotationSpeed = 1.0;
+	Phase.angleStart = 0;
+	Phase.angleEnd = -245;
 	Phase.angleEasingFunc = self.EaseInOutCubic;
 	
 	Phase.stanceOffsetSpeed = 1;	
-	Phase.stanceOffsetStart = Vector(0, -15);
-	Phase.stanceOffsetEnd = Vector(-15, -15);
+	Phase.stanceOffsetStart = Vector(0, -5);
+	Phase.stanceOffsetEnd = Vector(-15, 0);
 	Phase.stanceEasingFunc = self.EaseLinear;
 	
 	Phase.jointOffsetSpeed = 1;
@@ -765,7 +769,7 @@ function Create(self)
 		
 	end
 	Phase.constantCallback = function (self)
-		self.Frame = math.min(16, self.Frame + 8);
+
 	end
 	Phase.exitPhaseCallback = function (self)
 		
@@ -804,18 +808,18 @@ function Create(self)
 	Phase.rayTerrainRangeMultiplier = 0.5;
 	Phase.rayAngle = 100;
 	
-	Phase.frameStart = 15;
+	Phase.frameStart = 14;
 	Phase.frameEnd = 13;
 	Phase.frameEasingFunc = self.EaseLinear;
 	
 	Phase.rotationSpeed = 0.7;	
-	Phase.angleStart = -100;
+	Phase.angleStart = -245;
 	Phase.angleEnd = -80;
 	Phase.angleEasingFunc = self.EaseLinear;
 	
 	Phase.stanceOffsetSpeed = 1;	
-	Phase.stanceOffsetStart = Vector(-15, -15);
-	Phase.stanceOffsetEnd = Vector(2, -14);
+	Phase.stanceOffsetStart = Vector(-15, 0);
+	Phase.stanceOffsetEnd = Vector(6, -14);
 	Phase.stanceEasingFunc = self.EaseLinear;
 	
 	Phase.jointOffsetSpeed = 1;
@@ -831,7 +835,7 @@ function Create(self)
 		
 	end
 	Phase.constantCallback = function (self)
-		
+
 	end
 	Phase.exitPhaseCallback = function (self)
 		
@@ -880,7 +884,7 @@ function Create(self)
 	Phase.angleEasingFunc = self.EaseInOutCubic;
 	
 	Phase.stanceOffsetSpeed = 1;	
-	Phase.stanceOffsetStart = Vector(2, -14);
+	Phase.stanceOffsetStart = Vector(6, -14);
 	Phase.stanceOffsetEnd = Vector(18, -17);
 	Phase.stanceEasingFunc = self.EaseLinear;
 	
@@ -1206,7 +1210,7 @@ function Create(self)
 	Phase.canBeBlocked = true;
 	Phase.doesDamage = true;
 	Phase.attackType = "Stab";
-	Phase.Cleaves = false;
+	Phase.Cleaves = true;
 	Phase.isInterruptableByTerrain = true;
 	Phase.Damage = 2.0;
 	Phase.woundDamageMultiplier = 3.0;

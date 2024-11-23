@@ -869,34 +869,42 @@ end
 function SyncedUpdate(self)
 	if self.LastHitTargetUniqueID and self.CurrentPhaseData then
 		local hitTarget = MovableMan:FindObjectByUniqueID(self.LastHitTargetUniqueID);
-		if self.CurrentPhaseData.canBeBlocked and hitTarget:IsInGroup("Weapons - Melee") then
-			local messageTable = {};
-			messageTable.senderUniqueID = self.UniqueID;
-			messageTable.attackType = self.CurrentPhaseData.attackType;
-			messageTable.attackDamage = self.CurrentPhaseData.Damage;
-			messageTable.attackWoundDamageMultiplier = self.CurrentPhaseData.woundDamageMultiplier;
-			messageTable.hitPos = Vector(self.LastHitTargetPosition.X, self.LastHitTargetPosition.Y);
-			hitTarget:SendMessage("Mordhau_ReceiveBlockableAttack", messageTable);
-			-- At this point, if we were blocked, we have received a response
-			if self.MessageReturn_BlockResponse then
-				if self.MessageReturn_BlockResponse.blockType ~= "NoStaminaBlocked" then
-					self.CurrentPhaseData.canBeBlocked = false;
-					self.CurrentPhaseData.doesDamage = false;
-					self.CurrentPhaseData.canBeBlockCancelled = true;
-					
-					self.ReloadInputNullifyForAttack = false;
-					
-					if self.MessageReturn_BlockResponse.blockType == "Parried" then
-						-- Guarantee that we buffer into a parry reaction				
-						self.PhaseSetWasParried = true;
+		local hitTargetRootParent;
+		if hitTarget then
+			hitTargetRootParent = hitTarget:GetRootParent();
+		end
+		
+		-- Check we haven't hit this target before by checking its parent
+		if not self.HitMOTable[hitTarget:GetRootParent().UniqueID] then
+			if self.CurrentPhaseData.canBeBlocked and hitTarget:IsInGroup("Weapons - Melee") then
+				local messageTable = {};
+				messageTable.senderUniqueID = self.UniqueID;
+				messageTable.attackType = self.CurrentPhaseData.attackType;
+				messageTable.attackDamage = self.CurrentPhaseData.Damage;
+				messageTable.attackWoundDamageMultiplier = self.CurrentPhaseData.woundDamageMultiplier;
+				messageTable.hitPos = Vector(self.LastHitTargetPosition.X, self.LastHitTargetPosition.Y);
+				hitTarget:SendMessage("Mordhau_ReceiveBlockableAttack", messageTable);
+				-- At this point, if we were blocked, we have received a response
+				if self.MessageReturn_BlockResponse then
+					if self.MessageReturn_BlockResponse.blockType ~= "NoStaminaBlocked" then
+						self.CurrentPhaseData.canBeBlocked = false;
+						self.CurrentPhaseData.doesDamage = false;
+						self.CurrentPhaseData.canBeBlockCancelled = true;
+						
+						self.ReloadInputNullifyForAttack = false;
+						
+						if self.MessageReturn_BlockResponse.blockType == "Parried" then
+							-- Guarantee that we buffer into a parry reaction				
+							self.PhaseSetWasParried = true;
+						end
+						
+						self.PhaseSetWasBlocked = true;
+						self.MessageReturn_BlockResponse = nil;
+						return;
+					else
+						self.CurrentPhaseData.Damage = math.max(1, self.CurrentPhaseData.Damage * self.MessageReturn_BlockResponse.noStaminaDamageMultiplier);
+						self.CurrentPhaseData.woundDamageMultiplier = self.CurrentPhaseData.woundDamageMultiplier * self.MessageReturn_BlockResponse.noStaminaDamageMultiplier;
 					end
-					
-					self.PhaseSetWasBlocked = true;
-					self.MessageReturn_BlockResponse = nil;
-					return;
-				else
-					self.CurrentPhaseData.Damage = math.max(1, self.CurrentPhaseData.Damage * self.MessageReturn_BlockResponse.noStaminaDamageMultiplier);
-					self.CurrentPhaseData.woundDamageMultiplier = self.CurrentPhaseData.woundDamageMultiplier * self.MessageReturn_BlockResponse.noStaminaDamageMultiplier;
 				end
 			end
 		end
@@ -911,12 +919,11 @@ function SyncedUpdate(self)
 		end
 		
 		if hitTarget and IsMOSRotating(hitTarget) then
-			-- Check we haven't hit this target before by checking its parent
-			if not self.HitMOTable[hitTarget:GetRootParent().UniqueID] then
+			-- Check, again, that we haven't hit this target before by checking its parent
+			if self.CurrentPhaseData.doesDamage and not self.HitMOTable[hitTarget:GetRootParent().UniqueID] then
 				-- Add it for later
 				self.HitMOTable[hitTarget:GetRootParent().UniqueID] = true;
 				hitTarget = ToMOSRotating(hitTarget);
-				hitTargetRootParent = hitTarget:GetRootParent();
 				
 				self.HitMOFXFunction(self, hitTarget, self.LastHitTargetPosition);
 				
@@ -928,6 +935,7 @@ function SyncedUpdate(self)
 				local woundName = hitTarget:GetEntryWoundPresetName();
 				
 				-- Big check if it's an arm, leg, or head
+				-- TODO: figure out how to get around brownie Exterminator-style head attachables
 				local hitTargetIsPartOfActor = IsAttachable(hitTarget) and ToAttachable(hitTarget):IsAttached() and (IsArm(hitTarget) or IsLeg(hitTarget) or (IsAHuman(hitTargetRootParent) and ToAHuman(hitTargetRootParent).Head and hitTarget.UniqueID == ToAHuman(hitTargetRootParent).Head.UniqueID));
 				
 				local damageToUse = self.CurrentPhaseData.Damage;
@@ -956,7 +964,8 @@ function SyncedUpdate(self)
 					end
 				end
 				
-				if IsAHuman(hitTargetRootParent) then
+				-- Flinch if we have it turned on
+				if IsAHuman(hitTargetRootParent) and self.FlinchesOnHit then
 					local human = ToAHuman(hitTargetRootParent);
 					human:SendMessage("Mordhau_HitFlinch");
 					if human.EquippedItem then

@@ -480,7 +480,7 @@ function ThreadedUpdate(self)
 					end
 				end
 				-- Allow blocking for all phases of a PhaseSet if we hit anything
-				if self.PhaseSetWasBlocked or self.PhaseSetWasParried or self.PhaseSetWasInterruptedByTerrain then
+				if self.PhaseSetWasBlocked or self.PhaseSetWasParried or self.PhaseSetWasInterruptedByTerrain or next(self.HitMOTable) then
 					self.CurrentPhaseData.canBeBlockCancelled = true;
 				end
 				-- If this is after our final attack phase, let AI know
@@ -552,9 +552,10 @@ function ThreadedUpdate(self)
 				if auxiliaryHotkeyInput then
 					self.BufferedPhaseSet = self.AuxiliaryHotkeyInputPhaseSetName;
 				end
-				if reloadInput and not self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet then
-					self.BufferedPhaseSet = self.BlockInputPhaseSetName;
-				end
+				-- TODO: remove this once i'm sure i want it to be handled solely by canBeBlockCancelled
+				--if reloadInput and not self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet then
+				--	self.BufferedPhaseSet = self.BlockInputPhaseSetName;
+				--end
 				if aiAttackPhaseSetName then
 					self.BufferedPhaseSet = aiAttackPhaseSetName;
 				end
@@ -648,6 +649,7 @@ function ThreadedUpdate(self)
 		
 			if self.PhaseSetWasParried then
 				self.BufferedPhaseSet = self.ParriedReactionPhaseSetName and self.ParriedReactionPhaseSetName or nil;
+				self.CurrentPhaseData.canBeBlockCancelled = true;
 				self.CurrentPhaseData.allowsPhaseSetBuffering = true;
 				self.CurrentPhaseData.canComboOut = true;
 				if not self.BufferedPhaseSet then
@@ -739,12 +741,17 @@ function ThreadedUpdate(self)
 				if self.CurrentPhaseData.canBeBlockCancelled then
 					if reloadInput then
 						if self.BlockStaminaEnabled then
-							if self.BlockStamina > self.BlockStaminaBlockCancelCost then
-								self.BlockStamina = self.BlockStamina - self.BlockStaminaBlockCancelCost;
-								if self.BlockStaminaBlockCancelCost > 0 then
-									self.BlockStaminaRegenDelayTimer:Reset();
+							if self.BlockStamina > self.BlockStaminaBlockCancelCost or self.PhaseSetWasBlocked or self.PhaseSetWasParried or self.PhaseSetWasInterruptedByTerrain or next(self.HitMOTable) then
+								-- Don't require stamina if we we hit anything before
+								if self.PhaseSetWasBlocked or self.PhaseSetWasParried or self.PhaseSetWasInterruptedByTerrain or next(self.HitMOTable) then
+									playPhaseSet(self, self.BlockInputPhaseSetName);
+								else
+									self.BlockStamina = self.BlockStamina - self.BlockStaminaBlockCancelCost;
+									if self.BlockStaminaBlockCancelCost > 0 then
+										self.BlockStaminaRegenDelayTimer:Reset();
+									end
+									playPhaseSet(self, self.BlockInputPhaseSetName);
 								end
-								playPhaseSet(self, self.BlockInputPhaseSetName);
 							end
 						else
 							playPhaseSet(self, self.BlockInputPhaseSetName);
@@ -967,6 +974,15 @@ function SyncedUpdate(self)
 						wound.DrawAfterParent = true;
 						hitTarget:AddWound(wound, woundOffset, true);
 					end
+					
+					-- Apply impulse and force
+					local kineticVec = Vector(self.CurrentPhaseData.rayRange * self.FlipFactor, 0):RadRotate(self.RotAngle):DegRotate(self.CurrentPhaseData.rayAngle*self.FlipFactor);
+					
+					local impulseEnergy = self.CurrentPhaseData.kineticEnergy
+					hitTarget:AddAbsImpulseForce(kineticVec:SetMagnitude(impulseEnergy), self.LastHitTargetPosition);
+					
+					local forceEnergy = self.CurrentPhaseData.kineticEnergy * self.CurrentPhaseData.kineticEnergy;
+					hitTarget:AddAbsForce(kineticVec:SetMagnitude(forceEnergy), self.LastHitTargetPosition);
 				end
 				
 				-- Flinch if we have it turned on

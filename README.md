@@ -6,7 +6,9 @@ Compatible with CCCP Release 7.0.
 
 This is a huge set of sounds, generic spawnable VFX, and generic scripts for usage in other mods, with a focus on terrain-specific effects for things like footsteps, bullets hitting various terrains, etcetera.
 
-Another highlight is the HEATSystem, which is a system to handle gun animations, staged reloads, interesting dynamic recoil, and more. See the included sample HEATPistol.
+It also includes the HEATSystem, which handles staged, animated reloads, visual recoil, among other things, as well as the MordhauSystem, which is a melee weapon framework that makes it easy to animate interesting attacks with fully-featured blocking and parrying mechanics.
+
+Both have example devices so you can see a practical implementation of each.
 
 
 ## About sounds:

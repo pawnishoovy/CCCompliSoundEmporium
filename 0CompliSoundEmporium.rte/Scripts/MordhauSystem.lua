@@ -13,7 +13,7 @@ function OnMessage(self, message, object)
 				self.CurrentPhaseData.canComboOut = true;
 				self:SetNumberValue("Mordhau_AIParriedAnAttack", 1);			
 				
-				-- Block stamina, multiply then add flat reward
+				-- Block stamina
 				self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + self.BlockStaminaParryReward);
 				self.BlockStamina = self.BlockStamina - ((5 * object.attackDamage * object.attackWoundDamageMultiplier) * self.BlockStaminaTakenDamageMultiplier * self.BlockStaminaParryDamageMultiplier);		
 			elseif self.CurrentPhaseData.blocksAttacks then
@@ -740,7 +740,7 @@ function ThreadedUpdate(self)
 				-- Block cancelling - this is instant, so we do it here so nothing complains about missing CurrentPhaseData
 				if self.CurrentPhaseData.canBeBlockCancelled then
 					if reloadInput then
-						if self.BlockStaminaEnabled then
+						if self.BlockStaminaEnabled and self.PhaseTimer:IsPastSimMS(150) then -- 50ms grace period where it doesn't count as a cancel really
 							if self.BlockStamina > self.BlockStaminaBlockCancelCost or self.PhaseSetWasBlocked or self.PhaseSetWasParried or self.PhaseSetWasInterruptedByTerrain or next(self.HitMOTable) then
 								-- Don't require stamina if we we hit anything before
 								if self.PhaseSetWasBlocked or self.PhaseSetWasParried or self.PhaseSetWasInterruptedByTerrain or next(self.HitMOTable) then
@@ -886,14 +886,26 @@ function SyncedUpdate(self)
 			hitTargetRootParent = hitTarget:GetRootParent();
 		end
 		
+		local damageToUse = self.CurrentPhaseData.Damage;
+		local woundDamageMultiplierToUse = self.CurrentPhaseData.woundDamageMultiplier;
+		
+		-- Global damage multiplier
+		if damageToUse > 1.0 then
+			damageToUse = math.max(1.0, damageToUse * self.GlobalDamageMultiplier);
+		end
+		
+		if woundDamageMultiplierToUse > 1.0 then
+			woundDamageMultiplierToUse = math.max(1.0, woundDamageMultiplierToUse * self.GlobalDamageMultiplier);
+		end
+		
 		-- Check we haven't hit this target before by checking its parent
 		if not self.HitMOTable[hitTarget:GetRootParent().UniqueID] then
 			if self.CurrentPhaseData.canBeBlocked and hitTarget:IsInGroup("Weapons - Melee") then
 				local messageTable = {};
 				messageTable.senderUniqueID = self.UniqueID;
 				messageTable.attackType = self.CurrentPhaseData.attackType;
-				messageTable.attackDamage = self.CurrentPhaseData.Damage;
-				messageTable.attackWoundDamageMultiplier = self.CurrentPhaseData.woundDamageMultiplier;
+				messageTable.attackDamage = damageToUse;
+				messageTable.attackWoundDamageMultiplier = woundDamageMultiplierToUse;
 				messageTable.hitPos = Vector(self.LastHitTargetPosition.X, self.LastHitTargetPosition.Y);
 				hitTarget:SendMessage("Mordhau_ReceiveBlockableAttack", messageTable);
 				-- At this point, if we were blocked, we have received a response
@@ -950,8 +962,14 @@ function SyncedUpdate(self)
 				-- TODO: figure out how to get around brownie Exterminator-style head attachables
 				local hitTargetIsPartOfActor = IsAttachable(hitTarget) and ToAttachable(hitTarget):IsAttached() and (IsArm(hitTarget) or IsLeg(hitTarget) or (IsAHuman(hitTargetRootParent) and ToAHuman(hitTargetRootParent).Head and hitTarget.UniqueID == ToAHuman(hitTargetRootParent).Head.UniqueID));
 				
-				local damageToUse = self.CurrentPhaseData.Damage;
-				local woundDamageMultiplierToUse = self.CurrentPhaseData.woundDamageMultiplier;
+				-- Global damage multiplier
+				if damageToUse > 1.0 then
+					damageToUse = math.max(1.0, damageToUse * self.GlobalDamageMultiplier);
+				end
+				
+				if woundDamageMultiplierToUse > 1.0 then
+					woundDamageMultiplierToUse = math.max(1.0, woundDamageMultiplierToUse * self.GlobalDamageMultiplier);
+				end
 				
 				-- Roll wound damage multipler into raw wounds if it wouldn't be used otherwise
 				if (not hitTargetIsPartOfActor) and (not IsActor(hitTarget)) then

@@ -99,7 +99,7 @@ function Create(self)
 			return -10;
 		end,
 		["Offensive"] = function ()
-			return math.abs(self.MeleeAI.distanceOffset) - 5;
+			return math.abs(self.MeleeAI.distanceOffset) - 10;
 		end,
 		["Defensive"] = function ()
 			self.MeleeAI.controller:SetState(Controller.MOVE_FAST, false);
@@ -119,7 +119,6 @@ function ThreadedUpdateAI(self)
 	if self.Status >= Actor.DYING or not self.Head then
 		return
 	end
-	self.MeleeAI.attacking = false
 	
 	self.MeleeAI.controller = self:GetController();
 	
@@ -218,6 +217,8 @@ function ThreadedUpdateAI(self)
 				
 					-- Don't do incompatible combat behavior later
 					didCompatibleBehavior = true;
+					
+					local tryingToAttack = self.MeleeAI.weapon:NumberValueExists("Mordhau_AIWeaponCurrentlyAttacking");
 				
 					local targetIsMeleeAttacking = targetWeapon:NumberValueExists("Mordhau_AIWeaponCurrentlyAttacking");
 					local targetMeleeAttackRange;				
@@ -240,7 +241,7 @@ function ThreadedUpdateAI(self)
 					end
 					
 					-- Defend if appropriate
-					if (targetIsMeleeAttacking) and (distanceToTarget < (targetMeleeAttackRange + 100)) and (not postBlockAggression) then
+					if (not tryingToAttack) and (targetIsMeleeAttacking) and (distanceToTarget < (targetMeleeAttackRange + 100)) and (not postBlockAggression) then
 						tryingToBlock = true;
 						-- Always be regularly defensive during blocks
 						self.MeleeAI.tactic = "Defensive";
@@ -289,6 +290,7 @@ function ThreadedUpdateAI(self)
 							self.MeleeAI.attackOpportunityMissThreshold = -self.MeleeAI.attackOpportunityMissThresholdGain
 							self.MeleeAI.attackOpportunityMissTimer:Reset()
 						elseif distanceToTarget < (nextAttackRange) or postBlockAggression then
+							self.MeleeAI.attacking = true;
 							-- Make sure we don't accidentally block
 							self.MeleeAI.controller:SetState(Controller.WEAPON_RELOAD, false);
 							self.MeleeAI.weapon:RemoveNumberValue("Mordhau_AIBlockInput");			

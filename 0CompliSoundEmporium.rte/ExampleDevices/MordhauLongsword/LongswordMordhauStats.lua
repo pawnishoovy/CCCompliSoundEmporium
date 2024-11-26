@@ -52,6 +52,10 @@ function Create(self)
 	-- it is shorter than the PhaseSet itself it may become irrelevant.
 	self.ParryCooldown = 500;
 	
+	-- A global damage multiplier. Should be kept at 1 most of the time unless you're doing something strange.
+	-- Both Damage and woundDamageMultiplier remain at a minimum of 1.0 (unless your woundDamageMultiplier to begin with is lower than 1.0)
+	self.GlobalDamageMultiplier = 1.0;
+	
 	-- Maximum blocking stamina. Set to less than 0 to disable the system.
 	-- How much stamina an attack takes to block is 5 * Damage * woundDamageMultiplier.
 	self.BlockStaminaMaximum = 100;

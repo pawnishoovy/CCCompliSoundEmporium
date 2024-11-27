@@ -15,7 +15,7 @@ function OnMessage(self, message, object)
 				
 				-- Block stamina
 				self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + self.BlockStaminaParryReward);
-				self.BlockStamina = self.BlockStamina - ((5 * object.attackDamage * object.attackWoundDamageMultiplier) * self.BlockStaminaTakenDamageMultiplier * self.BlockStaminaParryDamageMultiplier);		
+				self.BlockStamina = self.BlockStamina - (object.staminaDamage * self.BlockStaminaTakenDamageMultiplier * self.BlockStaminaParryDamageMultiplier);		
 			elseif self.CurrentPhaseData.blocksAttacks then
 				self.BlockFXFunction(self, object.attackType, object.hitPos);
 				self:SetNumberValue("Mordhau_AIBlockedAnAttack", 1);
@@ -43,7 +43,7 @@ function OnMessage(self, message, object)
 					MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", "Blocked");
 				end
 				
-				self.BlockStamina = self.BlockStamina - ((5 * object.attackDamage * object.attackWoundDamageMultiplier) * self.BlockStaminaTakenDamageMultiplier);
+				self.BlockStamina = self.BlockStamina - (object.staminaDamage * self.BlockStaminaTakenDamageMultiplier);
 				self.BlockStaminaRegenDelayTimer:Reset();
 				self.BlockStamina = math.max(0, self.BlockStamina);
 			end
@@ -51,10 +51,6 @@ function OnMessage(self, message, object)
 	elseif message == "Mordhau_MessageReturn_BlockResponse" then
 		self.MessageReturn_BlockResponse = object;
 		self.BeingBlockedFXFunction(self);
-	elseif message == "Mordhau_AreYouBlocking" then
-		MovableMan:FindObjectByUniqueID(object):SendMessage("Mordhau_MessageReturn_AreYouBlockingResponse", self.CurrentPhaseData and (self.CurrentPhaseData.blocksAttacks or self.CurrentPhaseData.parriesAttacks) or false);
-	elseif message == "Mordhau_MessageReturn_AreYouBlockingResponse" then
-		self.MessageReturn_AreYouBlockingResponse = object;
 	elseif message == "Mordhau_HitFlinch" then
 		if self.PlayingPhaseSet then
 			if self.CurrentPhaseData then
@@ -101,11 +97,9 @@ function playPhaseSet(self, name)
 		self:RemoveNumberValue("Mordhau_AIParriedAnAttack");
 	
 		self.MessageReturn_BlockResponse = nil;
-		self.MessageReturn_AreYouBlockingResponse = nil;
 		self.PhaseSetWasBlocked = false;
 		self.PhaseSetWasParried = false;
 		self.PhaseSetWasInterruptedByTerrain = false;
-		self.WeaponIDToIgnore = nil;
 		self.HFlipSwitches = 0;
 		self.HitMOTable = {};
 	else
@@ -355,6 +349,8 @@ function OnDetach(self)
 	self.PlayingPhaseSet = false;
 	self.CurrentPhaseData = nil;
 	
+	self:RemoveNumberValue("Mordhau_CurrentlyBlockingOrParrying");
+	
 	-- Clear AI values, just in case
 	
 	self:RemoveNumberValue("Mordhau_AIBlockInput");
@@ -487,6 +483,12 @@ function ThreadedUpdate(self)
 				if self.CurrentPhaseData.isAfterFinalAttackPhase then
 					self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyAttacking");
 				end
+				-- Set our blocking/parrying flag for some code to use
+				if self.CurrentPhaseData.blocksAttacks or self.CurrentPhaseData.parriesAttacks then
+					self:SetNumberValue("Mordhau_CurrentlyBlockingOrParrying", 1);
+				else
+					self:RemoveNumberValue("Mordhau_CurrentlyBlockingOrParrying");
+				end
 			end
 			
 			if self.CurrentPhaseData.soundStart and not self.CurrentPhaseStartSoundPlayed then
@@ -552,10 +554,10 @@ function ThreadedUpdate(self)
 				if auxiliaryHotkeyInput then
 					self.BufferedPhaseSet = self.AuxiliaryHotkeyInputPhaseSetName;
 				end
-				-- TODO: remove this once i'm sure i want it to be handled solely by canBeBlockCancelled
-				--if reloadInput and not self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet then
-				--	self.BufferedPhaseSet = self.BlockInputPhaseSetName;
-				--end
+				-- Note that this makes "cancelling" a missed attack free by treating it as a valid combo instead
+				if reloadInput and not self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet then
+					self.BufferedPhaseSet = self.BlockInputPhaseSetName;
+				end
 				if aiAttackPhaseSetName then
 					self.BufferedPhaseSet = aiAttackPhaseSetName;
 				end
@@ -578,9 +580,23 @@ function ThreadedUpdate(self)
 					wasCollidable  = true;				
 					self:SetNumberValue("Mordhau_AIWeaponCurrentlyBlockable", 1);
 					local vecBetweenRays = (self.CurrentPhaseData.rayVecSecondPos - self.CurrentPhaseData.rayVecFirstPos) / self.CurrentPhaseData.rayDensity;
-					local rayPos = self.CurrentPhaseData.rayVecFirstPos;
+					local rayFirstPos = self.CurrentPhaseData.rayVecFirstPos;
 					
-					for i = 1, self.CurrentPhaseData.rayDensity do
+					local weaponIDToIgnore = nil;
+					
+					local ignoreTable = {self.RootID};
+					
+					-- This is messy, but MOIDs aren't stable, we need to re-check
+					for k, v in pairs(self.HitMOTable) do
+						local id = ToMOSRotating(MovableMan:FindObjectByUniqueID(k)).ID;
+						table.insert(ignoreTable, id);
+					end
+					
+					-- Manual while loop because we can have to repeat a ray sometimes and for loops are too finicky
+					local i = 1;
+					while i < self.CurrentPhaseData.rayDensity + 1 do				
+						local rayPos = rayFirstPos + (vecBetweenRays * (i - 1));
+					
 						local rayVec = Vector(self.CurrentPhaseData.rayRange * self.FlipFactor, 0):RadRotate(self.RotAngle):DegRotate(self.CurrentPhaseData.rayAngle*self.FlipFactor)
 						local rayOrigin = Vector(self.Pos.X, self.Pos.Y) + Vector(rayPos.X * self.FlipFactor, rayPos.Y):RadRotate(self.RotAngle)
 				
@@ -588,14 +604,30 @@ function ThreadedUpdate(self)
 							PrimitiveMan:DrawLinePrimitive(rayOrigin, rayOrigin + rayVec,  5);
 						end
 					
-						local moCheck = SceneMan:CastMORay(rayOrigin, rayVec, self.WeaponIDToIgnore or self.RootID, self.Team, 0, false, 1); -- Raycast
+						-- TODO: Use table of ignored MOIDs here once supported
+						-- including HitMOTable
+						local moCheck = SceneMan:CastMORay(rayOrigin, rayVec, weaponIDToIgnore or self.RootID, self.Team, 0, false, 1); -- Raycast
 						if moCheck ~= rte.NoMOID then
 							local mo = MovableMan:GetMOFromID(moCheck);
 							self.LastHitTargetUniqueID = mo.UniqueID;
 							self.LastHitTargetPosition = SceneMan:GetLastRayHitPos();
 							
-							-- Prepare to check this collision later this frame
-							self:RequestSyncedUpdate();
+							if mo:IsInGroup("Weapons - Melee") then
+								if mo:NumberValueExists("Mordhau_CurrentlyBlockingOrParrying") then
+									-- Prioritize this collision check, break the loop so we can't hit anything else this frame and accidentally override
+									self:RequestSyncedUpdate();
+									break;
+								else
+									-- We don't wanna mess with this weapon
+									-- TODO: add to ignoretable instead once supported
+									weaponIDToIgnore = moCheck;
+									-- Counteract the + 1 at the end of the while loop, so we repeat this same ray with the non-blocking weapon ignored
+									i = i - 1;
+								end
+							else
+								-- Prepare to check this collision later this frame regularly
+								self:RequestSyncedUpdate();
+							end
 						elseif not self.PhaseSetWasInterruptedByTerrain then -- After checking for MOs, check for terrain
 							local terrCheck = SceneMan:CastMaxStrengthRay(rayOrigin, rayOrigin + (rayVec * self.CurrentPhaseData.rayTerrainRangeMultiplier), 1);
 							if terrCheck > 5 then
@@ -633,9 +665,8 @@ function ThreadedUpdate(self)
 									end
 								end
 							end
-						end			
-									
-						rayPos = rayPos + vecBetweenRays;
+						end					
+						i = i + 1;
 					end
 				end
 			end			
@@ -740,10 +771,10 @@ function ThreadedUpdate(self)
 				-- Block cancelling - this is instant, so we do it here so nothing complains about missing CurrentPhaseData
 				if self.CurrentPhaseData.canBeBlockCancelled then
 					if reloadInput then
-						if self.BlockStaminaEnabled and self.PhaseTimer:IsPastSimMS(150) then -- 50ms grace period where it doesn't count as a cancel really
+						if self.BlockStaminaEnabled then
 							if self.BlockStamina > self.BlockStaminaBlockCancelCost or self.PhaseSetWasBlocked or self.PhaseSetWasParried or self.PhaseSetWasInterruptedByTerrain or next(self.HitMOTable) then
-								-- Don't require stamina if we we hit anything before
-								if self.PhaseSetWasBlocked or self.PhaseSetWasParried or self.PhaseSetWasInterruptedByTerrain or next(self.HitMOTable) then
+								-- Don't require stamina if we we hit anything before, or if we're "cancelling" a previous block
+								if self.PhaseSetWasBlocked or self.PhaseSetWasParried or self.PhaseSetWasInterruptedByTerrain or next(self.HitMOTable) or self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet then
 									playPhaseSet(self, self.BlockInputPhaseSetName);
 								else
 									self.BlockStamina = self.BlockStamina - self.BlockStaminaBlockCancelCost;
@@ -795,6 +826,8 @@ function ThreadedUpdate(self)
 				playPhaseSet(self, self.BlockInputPhaseSetName);
 				self.CurrentPhaseSetInput = self.BlockInputPhaseSetName;
 			end
+			
+			self:RemoveNumberValue("Mordhau_CurrentlyBlockingOrParrying");
 			
 			self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyAttacking");
 			self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyBlockable");
@@ -906,6 +939,7 @@ function SyncedUpdate(self)
 				messageTable.attackType = self.CurrentPhaseData.attackType;
 				messageTable.attackDamage = damageToUse;
 				messageTable.attackWoundDamageMultiplier = woundDamageMultiplierToUse;
+				messageTable.staminaDamage = (5 * damageToUse * woundDamageMultiplierToUse) * self.CurrentPhaseData.staminaDamageMultiplier;
 				messageTable.hitPos = Vector(self.LastHitTargetPosition.X, self.LastHitTargetPosition.Y);
 				hitTarget:SendMessage("Mordhau_ReceiveBlockableAttack", messageTable);
 				-- At this point, if we were blocked, we have received a response
@@ -934,8 +968,8 @@ function SyncedUpdate(self)
 		end
 	
 		if hitTarget:IsInGroup("Weapons - Melee") then
-			-- Ignore this weapon for next rays and hopefully get to someone to hit
-			self.WeaponIDToIgnore = hitTarget.ID;
+			-- If we're here, we went through an ineffective block OR met a non-Mordhau melee-weapon. Either way, pretend we hit it and ignore its ID later.
+			self.HitMOTable[hitTarget.UniqueID] = true;
 			return;
 		else	
 			-- Otherwise, prepare to deal damage below
@@ -988,6 +1022,11 @@ function SyncedUpdate(self)
 					
 						local wound = CreateAEmitter(woundName);
 						wound.DamageMultiplier = woundDamageMultiplierToUse;
+						wound.EmitCountLimit = math.ceil(wound.EmitCountLimit * self.CurrentPhaseData.woundBleedMultiplier);
+						for em in wound.Emissions do
+							em.BurstSize = em.BurstSize * self.CurrentPhaseData.woundBleedMultiplier;
+							em.ParticlesPerMinute = em.ParticlesPerMinute * self.CurrentPhaseData.woundBleedMultiplier;
+						end
 						wound.InheritedRotAngleOffset = woundAngle;
 						wound.DrawAfterParent = true;
 						hitTarget:AddWound(wound, woundOffset, true);
@@ -1011,15 +1050,11 @@ function SyncedUpdate(self)
 					local toFlinch = true;
 					if hitTarget:IsInGroup("Shields") then
 						if human.EquippedItem and human.EquippedItem:IsInGroup("Weapons - Mordhau Melee") then
-							human.EquippedItem:SendMessage("Mordhau_AreYouBlocking", self.UniqueID);
-							-- By now we should have gotten a response
-							if self.MessageReturn_AreYouBlockingResponse then
+							if human.EquippedItem:NumberValueExists("Mordhau_CurrentlyBlockingOrParrying") then
 								toFlinch = false;
 							end
 						end
 					end
-					
-					self.MessageReturn_AreYouBlockingResponse = nil;
 				
 					if toFlinch then
 						local human = ToAHuman(hitTargetRootParent);

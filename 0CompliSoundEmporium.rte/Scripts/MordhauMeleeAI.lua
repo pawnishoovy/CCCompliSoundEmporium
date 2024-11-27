@@ -35,12 +35,12 @@ end
 function Create(self)
 	
 	self.MeleeAI = {}
-	self.MeleeAI.debug = false;
+	self.MeleeAI.debug = true;
 	self.MeleeAI.active = false;
 
 	-- Skill decides how fast the AI attacks, how fast it reacts to attacks, how often it tries to parry.
 	-- From 0 to 1.
-	self.MeleeAI.skill = self.MeleeAISkill or 1.0;
+	self.MeleeAI.skill = self.MeleeAISkill or 0.5;
 	
 	local activity = ActivityMan:GetActivity();
 	if activity then
@@ -218,7 +218,7 @@ function ThreadedUpdateAI(self)
 					-- Don't do incompatible combat behavior later
 					didCompatibleBehavior = true;
 					
-					local tryingToAttack = self.MeleeAI.weapon:NumberValueExists("Mordhau_AIWeaponCurrentlyAttacking");
+					local tryingToAttack = self.MeleeAI.weapon:NumberValueExists("Mordhau_AIWeaponCurrentlyBlockable");
 				
 					local targetIsMeleeAttacking = targetWeapon:NumberValueExists("Mordhau_AIWeaponCurrentlyAttacking");
 					local targetMeleeAttackRange;				
@@ -248,7 +248,7 @@ function ThreadedUpdateAI(self)
 						
 						if self.MeleeAI.blockingDelayTimer:IsPastSimMS(self.MeleeAI.blockingDelay) or self.MeleeAI.attemptingParry then
 							if self.MeleeAI.attemptingParryMaxWaitTimer:IsPastSimMS(self.MeleeAI.attemptingParryMaxWaitTime) then
-								self.attemptingParry = false;
+								self.MeleeAI.attemptingParry = false;
 							end
 						
 							if (not self.MeleeAI.attemptingParry) or targetWeapon:NumberValueExists("Mordhau_AIWeaponCurrentlyBlockable") then		
@@ -388,8 +388,8 @@ function ThreadedUpdateAI(self)
 			
 			-- Look around
 			
-			-- tryingToBlock implies we have targetWeapon
-			self.MeleeAI.controller.AnalogAim = (tryingToBlock and not self.MeleeAI.weapon:NumberValueExists("Mordhau_AIWeaponCurrentlyAttacking")) and SceneMan:ShortestDistance(self.Head.Pos, targetWeapon.Pos, SceneMan.SceneWrapsX).Normalized 
+			-- tryingToBlock implies we have targetWeapon, look a little above the weapon
+			self.MeleeAI.controller.AnalogAim = (tryingToBlock and not self.MeleeAI.weapon:NumberValueExists("Mordhau_AIWeaponCurrentlyAttacking")) and SceneMan:ShortestDistance(self.Head.Pos, (targetWeapon.Pos + Vector(0, -9)), SceneMan.SceneWrapsX).Normalized 
 			or (dist.Normalized);
 			
 			if self.MeleeAI.debug then

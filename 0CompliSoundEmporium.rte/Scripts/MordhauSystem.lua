@@ -3,6 +3,8 @@ require("MasterTerrainIDList")
 function OnMessage(self, message, object)
 	if message == "Mordhau_ReceiveBlockableAttack" then
 		local messageTable = {};
+		local actorMessageTable = {};
+		actorMessageTable.potentialStaminaDamage = (object.staminaDamage);
 		if self.CurrentPhaseData then
 			if self.CurrentPhaseData.parriesAttacks then
 				messageTable.blockType = "Parried";
@@ -11,7 +13,9 @@ function OnMessage(self, message, object)
 				self.CurrentPhaseData.canBeBlockCancelled = true;
 				self.CurrentPhaseData.allowsPhaseSetBuffering = true;
 				self.CurrentPhaseData.canComboOut = true;
-				self:SetNumberValue("Mordhau_AIParriedAnAttack", 1);			
+				self:SetNumberValue("Mordhau_AIParriedAnAttack", 1);
+				
+				actorMessageTable.blockType = "Parried";
 				
 				-- Block stamina
 				self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + self.BlockStaminaParryReward);
@@ -26,9 +30,14 @@ function OnMessage(self, message, object)
 					messageTable.blockType = "NoStaminaBlocked";
 					messageTable.noStaminaDamageMultiplier = self.BlockStaminaNoStaminaDamageMultiplier;
 					MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", messageTable);
+					
+					actorMessageTable.blockType = "NoStaminaBlocked";
 
 					-- Disarming
 					if self.BlockStaminaDisarmBelowThreshold and self.BlockStamina < (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) then
+						-- Send it now, we won't get a chance later, Parent will be nil
+						actorMessageTable.blockType = "Disarmed";
+						self.Parent:SendMessage("Mordhau_ActorReceivedBlockableAttackInfo", actorMessageTable);
 						local vel = self.Parent.Vel;
 						self:RemoveFromParent(true, true);
 						self.Vel = vel + Vector(-5 * self.FlipFactor, -10);
@@ -41,12 +50,18 @@ function OnMessage(self, message, object)
 					-- Regular blocking
 					messageTable.blockType = "Blocked";
 					MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", "Blocked");
+					
+					actorMessageTable.blockType = "Blocked";
 				end
 				
 				self.BlockStamina = self.BlockStamina - (object.staminaDamage * self.BlockStaminaTakenDamageMultiplier);
 				self.BlockStaminaRegenDelayTimer:Reset();
 				self.BlockStamina = math.max(0, self.BlockStamina);
 			end
+		end
+		
+		if self.Parent then
+			self.Parent:SendMessage("Mordhau_ActorReceivedBlockableAttackInfo", actorMessageTable);
 		end
 	elseif message == "Mordhau_MessageReturn_BlockResponse" then
 		self.MessageReturn_BlockResponse = object;
@@ -102,6 +117,9 @@ function playPhaseSet(self, name)
 		self.PhaseSetWasInterruptedByTerrain = false;
 		self.HFlipSwitches = 0;
 		self.HitMOTable = {};
+		
+		self:RequestSyncedUpdate();
+		self.SyncedMessageActorAboutPhaseSet = true;
 	else
 		print("ERROR: MordhauSystem could not find PhaseSet it was asked to play of name " .. name);
 		return false;
@@ -241,7 +259,7 @@ function Create(self)
 	
 	self.BlockStaminaRegenDelay = 3000;
 	
-	self:SetNumberValue("Mordhau_AIBlockStaminaPercentage", 1);
+	self:SetNumberValue("Mordhau_BlockStaminaPercentage", 1);
 	
 	self.EffectiveWoundCount = self:NumberValueExists("Mordhau_EffectiveWoundCount") and self:GetNumberValue("Mordhau_EffectiveWoundCount") or self.WoundCount;
 	self:RemoveNumberValue("Mordhau_EffectiveWoundCount");
@@ -274,6 +292,13 @@ function Create(self)
 	self.CurrentPhaseSetInput = nil;
 	
 	self.ResetCurrentPhaseSetInputAfterBuffer = false;
+	
+	-----------------
+	----------------- Thread safety :)
+	-----------------	
+	
+	self.SyncedMessageActorAboutPhaseSet = false;
+	self.SyncedMessageActorAboutPhaseEnter = false;
 	
 	-----------------
 	----------------- Animation
@@ -332,7 +357,7 @@ function OnAttach(self, newParent)
 		end
 		
 		self.BlockStamina = self.BlockStaminaMaximum;
-		self:SetNumberValue("Mordhau_AIBlockStaminaPercentage", 1);
+		self:SetNumberValue("Mordhau_BlockStaminaPercentage", 1);
 		
 		self.HUDVisible = false;
 	end
@@ -489,6 +514,8 @@ function ThreadedUpdate(self)
 				else
 					self:RemoveNumberValue("Mordhau_CurrentlyBlockingOrParrying");
 				end
+				self:RequestSyncedUpdate();
+				self.SyncedMessageActorAboutPhaseEnter = true;
 			end
 			
 			if self.CurrentPhaseData.soundStart and not self.CurrentPhaseStartSoundPlayed then
@@ -615,6 +642,7 @@ function ThreadedUpdate(self)
 							if mo:IsInGroup("Weapons - Melee") then
 								if mo:NumberValueExists("Mordhau_CurrentlyBlockingOrParrying") then
 									-- Prioritize this collision check, break the loop so we can't hit anything else this frame and accidentally override
+									self.SyncedDoCollision = true;
 									self:RequestSyncedUpdate();
 									break;
 								else
@@ -626,6 +654,7 @@ function ThreadedUpdate(self)
 								end
 							else
 								-- Prepare to check this collision later this frame regularly
+								self.SyncedDoCollision = true;
 								self:RequestSyncedUpdate();
 							end
 						elseif not self.PhaseSetWasInterruptedByTerrain then -- After checking for MOs, check for terrain
@@ -843,7 +872,7 @@ function ThreadedUpdate(self)
 			self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + TimerMan.DeltaTimeSecs * regenRate);
 		end
 		
-		self:SetNumberValue("Mordhau_AIBlockStaminaPercentage", (self.BlockStamina - (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier)) / (self.BlockStaminaMaximum));
+		self:SetNumberValue("Mordhau_BlockStaminaPercentage", (self.BlockStamina - (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier)) / (self.BlockStaminaMaximum));
 		
 		-- Block stamina bar
 		if (isPlayerControlled or self.DrawBlockStaminaBarForAI) and self.BlockStaminaEnabled and self.DrawBlockStaminaBar then
@@ -912,167 +941,203 @@ function ThreadedUpdate(self)
 end
 
 function SyncedUpdate(self)
-	if self.LastHitTargetUniqueID and self.CurrentPhaseData then
-		local hitTarget = MovableMan:FindObjectByUniqueID(self.LastHitTargetUniqueID);
-		local hitTargetRootParent;
-		if hitTarget then
-			hitTargetRootParent = hitTarget:GetRootParent();
-		end
-		
-		local damageToUse = self.CurrentPhaseData.Damage;
-		local woundDamageMultiplierToUse = self.CurrentPhaseData.woundDamageMultiplier;
-		
-		-- Global damage multiplier
-		if damageToUse > 1.0 then
-			damageToUse = math.max(1.0, damageToUse * self.GlobalDamageMultiplier);
-		end
-		
-		if woundDamageMultiplierToUse > 1.0 then
-			woundDamageMultiplierToUse = math.max(1.0, woundDamageMultiplierToUse * self.GlobalDamageMultiplier);
-		end
-		
-		-- Check we haven't hit this target before by checking its parent
-		if not self.HitMOTable[hitTarget:GetRootParent().UniqueID] then
-			if self.CurrentPhaseData.canBeBlocked and hitTarget:IsInGroup("Weapons - Melee") then
-				local messageTable = {};
-				messageTable.senderUniqueID = self.UniqueID;
-				messageTable.attackType = self.CurrentPhaseData.attackType;
-				messageTable.attackDamage = damageToUse;
-				messageTable.attackWoundDamageMultiplier = woundDamageMultiplierToUse;
-				messageTable.staminaDamage = (5 * damageToUse * woundDamageMultiplierToUse) * self.CurrentPhaseData.staminaDamageMultiplier;
-				messageTable.hitPos = Vector(self.LastHitTargetPosition.X, self.LastHitTargetPosition.Y);
-				hitTarget:SendMessage("Mordhau_ReceiveBlockableAttack", messageTable);
-				-- At this point, if we were blocked, we have received a response
-				if self.MessageReturn_BlockResponse then
-					if self.MessageReturn_BlockResponse.blockType ~= "NoStaminaBlocked" then
-						self.CurrentPhaseData.canBeBlocked = false;
-						self.CurrentPhaseData.doesDamage = false;
-						self.CurrentPhaseData.canBeBlockCancelled = true;
-						
-						self.ReloadInputNullifyForAttack = false;
-						
-						if self.MessageReturn_BlockResponse.blockType == "Parried" then
-							-- Guarantee that we buffer into a parry reaction				
-							self.PhaseSetWasParried = true;
+	if self.SyncedDoCollision then
+		self.SyncedDoCollision = false;
+		if self.LastHitTargetUniqueID and self.CurrentPhaseData then
+			local hitTarget = MovableMan:FindObjectByUniqueID(self.LastHitTargetUniqueID);
+			local hitTargetRootParent;
+			if hitTarget then
+				hitTargetRootParent = hitTarget:GetRootParent();
+			end
+			
+			local damageToUse = self.CurrentPhaseData.Damage;
+			local woundDamageMultiplierToUse = self.CurrentPhaseData.woundDamageMultiplier;
+			
+			-- Global damage multiplier
+			if damageToUse > 1.0 then
+				damageToUse = math.max(1.0, damageToUse * self.GlobalDamageMultiplier);
+			end
+			
+			if woundDamageMultiplierToUse > 1.0 then
+				woundDamageMultiplierToUse = math.max(1.0, woundDamageMultiplierToUse * self.GlobalDamageMultiplier);
+			end
+			
+			-- Check we haven't hit this target before by checking its parent
+			if not self.HitMOTable[hitTarget:GetRootParent().UniqueID] then
+				if self.CurrentPhaseData.canBeBlocked and hitTarget:IsInGroup("Weapons - Melee") then
+					local messageTable = {};
+					messageTable.senderUniqueID = self.UniqueID;
+					messageTable.attackType = self.CurrentPhaseData.attackType;
+					messageTable.attackDamage = damageToUse;
+					messageTable.attackWoundDamageMultiplier = woundDamageMultiplierToUse;
+					messageTable.staminaDamage = (5 * damageToUse * woundDamageMultiplierToUse) * self.CurrentPhaseData.staminaDamageMultiplier;
+					messageTable.hitPos = Vector(self.LastHitTargetPosition.X, self.LastHitTargetPosition.Y);
+					hitTarget:SendMessage("Mordhau_ReceiveBlockableAttack", messageTable);
+					-- At this point, if we were blocked, we have received a response
+					if self.MessageReturn_BlockResponse then
+						if self.MessageReturn_BlockResponse.blockType ~= "NoStaminaBlocked" then
+							self.CurrentPhaseData.canBeBlocked = false;
+							self.CurrentPhaseData.doesDamage = false;
+							self.CurrentPhaseData.canBeBlockCancelled = true;
+							
+							self.ReloadInputNullifyForAttack = false;
+							
+							if self.MessageReturn_BlockResponse.blockType == "Parried" then
+								-- Guarantee that we buffer into a parry reaction				
+								self.PhaseSetWasParried = true;
+							end
+							
+							self.PhaseSetWasBlocked = true;
+							self.MessageReturn_BlockResponse = nil;
+							return;
+						else
+							self.CurrentPhaseData.Damage = math.max(1, self.CurrentPhaseData.Damage * self.MessageReturn_BlockResponse.noStaminaDamageMultiplier);
+							self.CurrentPhaseData.woundDamageMultiplier = self.CurrentPhaseData.woundDamageMultiplier * self.MessageReturn_BlockResponse.noStaminaDamageMultiplier;
 						end
-						
-						self.PhaseSetWasBlocked = true;
-						self.MessageReturn_BlockResponse = nil;
-						return;
-					else
-						self.CurrentPhaseData.Damage = math.max(1, self.CurrentPhaseData.Damage * self.MessageReturn_BlockResponse.noStaminaDamageMultiplier);
-						self.CurrentPhaseData.woundDamageMultiplier = self.CurrentPhaseData.woundDamageMultiplier * self.MessageReturn_BlockResponse.noStaminaDamageMultiplier;
 					end
 				end
 			end
-		end
-	
-		if hitTarget:IsInGroup("Weapons - Melee") then
-			-- If we're here, we went through an ineffective block OR met a non-Mordhau melee-weapon. Either way, pretend we hit it and ignore its ID later.
-			self.HitMOTable[hitTarget.UniqueID] = true;
-			return;
-		else	
-			-- Otherwise, prepare to deal damage below
-			self.CurrentPhaseData.canBeBlockCancelled = true;
-		end
 		
-		if hitTarget and IsMOSRotating(hitTarget) then
-			-- Check, again, that we haven't hit this target before by checking its parent
-			if self.CurrentPhaseData.doesDamage and not self.HitMOTable[hitTarget:GetRootParent().UniqueID] then
-				-- Add it for later
-				self.HitMOTable[hitTarget:GetRootParent().UniqueID] = true;
-				hitTarget = ToMOSRotating(hitTarget);
-				
-				self.HitMOFXFunction(self, hitTarget, self.LastHitTargetPosition);
-				
-				self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + self.BlockStaminaHitMOReward);
-				
-				local woundOffset = SceneMan:ShortestDistance(hitTarget.Pos, self.LastHitTargetPosition, SceneMan.SceneWrapsX);
-				local woundAngle = woundOffset.AbsRadAngle - hitTarget.RotAngle;		
-				local woundOffset = Vector(woundOffset.X * hitTarget.FlipFactor, woundOffset.Y):RadRotate(-hitTarget.RotAngle * hitTarget.FlipFactor):SetMagnitude(woundOffset.Magnitude);		
-				local woundName = hitTarget:GetEntryWoundPresetName();
-				
-				-- Big check if it's an arm, leg, or head
-				-- TODO: figure out how to get around brownie Exterminator-style head attachables
-				local hitTargetIsPartOfActor = IsAttachable(hitTarget) and ToAttachable(hitTarget):IsAttached() and (IsArm(hitTarget) or IsLeg(hitTarget) or (IsAHuman(hitTargetRootParent) and ToAHuman(hitTargetRootParent).Head and hitTarget.UniqueID == ToAHuman(hitTargetRootParent).Head.UniqueID));
-				
-				-- Global damage multiplier
-				if damageToUse > 1.0 then
-					damageToUse = math.max(1.0, damageToUse * self.GlobalDamageMultiplier);
-				end
-				
-				if woundDamageMultiplierToUse > 1.0 then
-					woundDamageMultiplierToUse = math.max(1.0, woundDamageMultiplierToUse * self.GlobalDamageMultiplier);
-				end
-				
-				-- Roll wound damage multipler into raw wounds if it wouldn't be used otherwise
-				if (not hitTargetIsPartOfActor) and (not IsActor(hitTarget)) then
-					damageToUse = math.max(1.0, damageToUse * self.CurrentPhaseData.woundDamageMultiplier);
-					woundDamageMultiplierToUse = math.min(1.0, woundDamageMultiplierToUse);
-				end
+			if hitTarget:IsInGroup("Weapons - Melee") then
+				-- If we're here, we went through an ineffective block OR met a non-Mordhau melee-weapon. Either way, pretend we hit it and ignore its ID later.
+				self.HitMOTable[hitTarget.UniqueID] = true;
+				return;
+			else	
+				-- Otherwise, prepare to deal damage below
+				self.CurrentPhaseData.canBeBlockCancelled = true;
+			end
+			
+			if hitTarget and IsMOSRotating(hitTarget) then
+				-- Check, again, that we haven't hit this target before by checking its parent
+				if self.CurrentPhaseData.doesDamage and not self.HitMOTable[hitTarget:GetRootParent().UniqueID] then
+					-- Add it for later
+					self.HitMOTable[hitTarget:GetRootParent().UniqueID] = true;
+					hitTarget = ToMOSRotating(hitTarget);
 					
-				local woundsToAdd = math.floor(damageToUse + math.random(0, 0.99));
-				
-				if woundName ~= "" then
-					for i = 1, woundsToAdd do
-						if self.CurrentPhaseData.dismemberInsteadOfGibbing and hitTarget.WoundCount + 2 >= hitTarget.GibWoundLimit and IsActor(hitTargetRootParent) and hitTargetIsPartOfActor then
-							ToAttachable(hitTarget):RemoveFromParent(true, true);
-							return;
-						end					
+					self.HitMOFXFunction(self, hitTarget, self.LastHitTargetPosition);
 					
-						local wound = CreateAEmitter(woundName);
-						wound.DamageMultiplier = woundDamageMultiplierToUse;
-						wound.EmitCountLimit = math.ceil(wound.EmitCountLimit * self.CurrentPhaseData.woundBleedMultiplier);
-						for em in wound.Emissions do
-							em.BurstSize = em.BurstSize * self.CurrentPhaseData.woundBleedMultiplier;
-							em.ParticlesPerMinute = em.ParticlesPerMinute * self.CurrentPhaseData.woundBleedMultiplier;
-						end
-						wound.InheritedRotAngleOffset = woundAngle;
-						wound.DrawAfterParent = true;
-						hitTarget:AddWound(wound, woundOffset, true);
+					self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + self.BlockStaminaHitMOReward);
+					
+					local woundOffset = SceneMan:ShortestDistance(hitTarget.Pos, self.LastHitTargetPosition, SceneMan.SceneWrapsX);
+					local woundAngle = woundOffset.AbsRadAngle - hitTarget.RotAngle;		
+					local woundOffset = Vector(woundOffset.X * hitTarget.FlipFactor, woundOffset.Y):RadRotate(-hitTarget.RotAngle * hitTarget.FlipFactor):SetMagnitude(woundOffset.Magnitude);		
+					local woundName = hitTarget:GetEntryWoundPresetName();
+					
+					-- Big check if it's an arm, leg, or head
+					-- TODO: figure out how to get around brownie Exterminator-style head attachables
+					local hitTargetIsPartOfActor = IsAttachable(hitTarget) and ToAttachable(hitTarget):IsAttached() and (IsArm(hitTarget) or IsLeg(hitTarget) or (IsAHuman(hitTargetRootParent) and ToAHuman(hitTargetRootParent).Head and hitTarget.UniqueID == ToAHuman(hitTargetRootParent).Head.UniqueID));
+					
+					-- Global damage multiplier
+					if damageToUse > 1.0 then
+						damageToUse = math.max(1.0, damageToUse * self.GlobalDamageMultiplier);
 					end
 					
-					-- Apply impulse and force
-					local kineticVec = Vector(self.CurrentPhaseData.rayRange * self.FlipFactor, 0):RadRotate(self.RotAngle):DegRotate(self.CurrentPhaseData.rayAngle*self.FlipFactor);
+					if woundDamageMultiplierToUse > 1.0 then
+						woundDamageMultiplierToUse = math.max(1.0, woundDamageMultiplierToUse * self.GlobalDamageMultiplier);
+					end
 					
-					local impulseEnergy = self.CurrentPhaseData.kineticEnergy
-					hitTarget:AddAbsImpulseForce(kineticVec:SetMagnitude(impulseEnergy), self.LastHitTargetPosition);
+					-- Roll wound damage multipler into raw wounds if it wouldn't be used otherwise
+					if (not hitTargetIsPartOfActor) and (not IsActor(hitTarget)) then
+						damageToUse = math.max(1.0, damageToUse * self.CurrentPhaseData.woundDamageMultiplier);
+						woundDamageMultiplierToUse = math.min(1.0, woundDamageMultiplierToUse);
+					end
+						
+					local woundsToAdd = math.floor(damageToUse + math.random(0, 0.99));
 					
-					local forceEnergy = self.CurrentPhaseData.kineticEnergy * self.CurrentPhaseData.kineticEnergy;
-					hitTarget:AddAbsForce(kineticVec:SetMagnitude(forceEnergy), self.LastHitTargetPosition);
-				end
-				
-				-- Flinch if we have it turned on
-				if IsAHuman(hitTargetRootParent) and self.FlinchesOnHit then
-					local human = ToAHuman(hitTargetRootParent);
+					if woundName ~= "" then
+						for i = 1, woundsToAdd do
+							if self.CurrentPhaseData.dismemberInsteadOfGibbing and hitTarget.WoundCount + 2 >= hitTarget.GibWoundLimit and IsActor(hitTargetRootParent) and hitTargetIsPartOfActor then
+								local isHead = ToAHuman(hitTargetRootParent).Head and hitTarget.UniqueID == ToAHuman(hitTargetRootParent).Head.UniqueID;
+								ToAttachable(hitTarget):RemoveFromParent(true, true);
+								-- If it's a head, make it fly baby
+								if isHead then
+									hitTarget.Vel = hitTarget.Vel + Vector(3 * self.FlipFactor, -7):RadRotate(hitTargetRootParent.RotAngle);
+									hitTarget.AngularVel = -3 * self.FlipFactor;
+								end
+								return;
+							end					
+						
+							local wound = CreateAEmitter(woundName);
+							wound.DamageMultiplier = woundDamageMultiplierToUse;
+							wound.EmitCountLimit = math.ceil(wound.EmitCountLimit * self.CurrentPhaseData.woundBleedMultiplier);
+							for em in wound.Emissions do
+								em.BurstSize = em.BurstSize * self.CurrentPhaseData.woundBleedMultiplier;
+								em.ParticlesPerMinute = em.ParticlesPerMinute * self.CurrentPhaseData.woundBleedMultiplier;
+							end
+							wound.InheritedRotAngleOffset = woundAngle;
+							wound.DrawAfterParent = true;
+							hitTarget:AddWound(wound, woundOffset, true);
+						end
+						
+						-- Apply impulse and force
+						local kineticVec = Vector(self.CurrentPhaseData.rayRange * self.FlipFactor, 0):RadRotate(self.RotAngle):DegRotate(self.CurrentPhaseData.rayAngle*self.FlipFactor);
+						
+						local impulseEnergy = self.CurrentPhaseData.kineticEnergy
+						hitTarget:AddAbsImpulseForce(kineticVec:SetMagnitude(impulseEnergy), self.LastHitTargetPosition);
+						
+						local forceEnergy = self.CurrentPhaseData.kineticEnergy * self.CurrentPhaseData.kineticEnergy;
+						hitTarget:AddAbsForce(kineticVec:SetMagnitude(forceEnergy), self.LastHitTargetPosition);
+					end
 					
-					-- First check if we managed to hit the shield of someone who was blocking
-					local toFlinch = true;
-					if hitTarget:IsInGroup("Shields") then
-						if human.EquippedItem and human.EquippedItem:IsInGroup("Weapons - Mordhau Melee") then
-							if human.EquippedItem:NumberValueExists("Mordhau_CurrentlyBlockingOrParrying") then
-								toFlinch = false;
+					-- Flinch if we have it turned on
+					if IsAHuman(hitTargetRootParent) and self.FlinchesOnHit then
+						local human = ToAHuman(hitTargetRootParent);
+						
+						-- First check if we managed to hit the shield of someone who was blocking
+						local toFlinch = true;
+						if hitTarget:IsInGroup("Shields") then
+							if human.EquippedItem and human.EquippedItem:IsInGroup("Weapons - Mordhau Melee") then
+								if human.EquippedItem:NumberValueExists("Mordhau_CurrentlyBlockingOrParrying") then
+									toFlinch = false;
+								end
+							end
+						end
+					
+						if toFlinch then
+							local human = ToAHuman(hitTargetRootParent);
+							human:SendMessage("Mordhau_HitFlinch");
+							if human.EquippedItem then
+								human.EquippedItem:SendMessage("Mordhau_HitFlinch");
+							end
+							if human.EquippedBGItem then
+								human.EquippedBGItem:SendMessage("Mordhau_HitFlinch");
 							end
 						end
 					end
-				
-					if toFlinch then
-						local human = ToAHuman(hitTargetRootParent);
-						human:SendMessage("Mordhau_HitFlinch");
-						if human.EquippedItem then
-							human.EquippedItem:SendMessage("Mordhau_HitFlinch");
-						end
-						if human.EquippedBGItem then
-							human.EquippedBGItem:SendMessage("Mordhau_HitFlinch");
-						end
-					end
+					
+					-- Stop soundStart if applicable	
+					if self.CurrentPhaseData.soundStart and self.CurrentPhaseData.soundStartStopsOnHit and self.CurrentPhaseData.soundStart:IsBeingPlayed() then
+						self.CurrentPhaseData.soundStart:FadeOut(100);
+					end	
 				end
-				
-				-- Stop soundStart if applicable	
-				if self.CurrentPhaseData.soundStart and self.CurrentPhaseData.soundStartStopsOnHit and self.CurrentPhaseData.soundStart:IsBeingPlayed() then
-					self.CurrentPhaseData.soundStart:FadeOut(100);
-				end	
 			end
+		end
+	end
+	
+	-- TODO: maybe just copy the data to messageTable directly?
+	if self.SyncedMessageActorAboutPhaseSet then
+		self.SyncedMessageActorAboutPhaseSet = false;
+		if self.Parent then
+			local messageTable = {};
+			messageTable.weaponName = self.PresetName;
+			messageTable.phaseSetName = self.PhaseSets[self.CurrentPhaseSet].Name;
+			messageTable.phaseSetIsAttacking = self.PhaseSets[self.CurrentPhaseSet].isAttackingPhaseSet;
+			messageTable.phaseSetIsBlocking = self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet;
+			self.Parent:SendMessage("Mordhau_ActorPhaseSetPlayInfo", messageTable);
+		end
+	end
+	if self.SyncedMessageActorAboutPhaseEnter then
+		self.SyncedMessageActorAboutPhaseEnter = false;
+		if self.CurrentPhaseData and self.Parent then
+			local messageTable = {};
+			messageTable.weaponName = self.PresetName;
+			messageTable.phaseSetName = self.PhaseSets[self.CurrentPhaseSet].Name;
+			messageTable.phaseSetIsAttacking = self.PhaseSets[self.CurrentPhaseSet].isAttackingPhaseSet;
+			messageTable.phaseSetIsBlocking = self.PhaseSets[self.CurrentPhaseSet].isBlockingPhaseSet;
+			messageTable.enteredPhaseName = self.CurrentPhaseData.Name;
+			messageTable.canBeBlocked = self.CurrentPhaseData.canBeBlocked;
+			messageTable.doesDamage = self.CurrentPhaseData.canBeBlocked;
+			self.Parent:SendMessage("Mordhau_ActorPhaseEnteredInfo", messageTable);
 		end
 	end
 end

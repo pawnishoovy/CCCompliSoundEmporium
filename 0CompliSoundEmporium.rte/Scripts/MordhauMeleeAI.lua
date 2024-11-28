@@ -333,7 +333,7 @@ function ThreadedUpdateAI(self)
 			end
 			
 			-- Tactic override for being low on weapon stamina
-			 if self.MeleeAI.weapon:GetNumberValue("Mordhau_AIBlockStaminaPercentage") < 0.2 and not self.MeleeAI.attemptingParry then
+			 if self.MeleeAI.weapon:GetNumberValue("Mordhau_BlockStaminaPercentage") < 0.2 and not self.MeleeAI.attemptingParry then
 				-- Always retreat when in danger
 				self.MeleeAI.tactic = "Retreat";
 			end		

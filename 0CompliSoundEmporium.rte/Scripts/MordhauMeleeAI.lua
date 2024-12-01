@@ -40,7 +40,7 @@ function Create(self)
 
 	-- Skill decides how fast the AI attacks, how fast it reacts to attacks, how often it tries to parry.
 	-- From 0 to 1.
-	self.MeleeAI.skill = self.MeleeAISkill or 0.5;
+	self.MeleeAI.skill = self.MeleeAISkill or 1.0;
 	
 	local activity = ActivityMan:GetActivity();
 	if activity then
@@ -119,6 +119,8 @@ function ThreadedUpdateAI(self)
 	if self.Status >= Actor.DYING or not self.Head then
 		return
 	end
+	
+	if not self.AI then return end
 	
 	self.MeleeAI.controller = self:GetController();
 	

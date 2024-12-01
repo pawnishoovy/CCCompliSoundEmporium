@@ -199,7 +199,7 @@ function ThreadedUpdate(self)
 	
 	local lastSteppedTerrainID;
 
-	if isPlayerControlled then
+	if isPlayerControlled or not self.AI then
 		if self.Vel.Y > 10 or (self.Vel.Y > 5 and self.Vel.Magnitude > 10) then
 			self.CompliSoundActorWasInAir = true;
 			self.CompliSoundActorWasInAirTimer:Reset();

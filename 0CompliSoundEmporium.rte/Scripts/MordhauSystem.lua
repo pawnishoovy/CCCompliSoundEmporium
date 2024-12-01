@@ -375,6 +375,8 @@ function OnDetach(self)
 	self.CurrentPhaseData = nil;
 	
 	self:RemoveNumberValue("Mordhau_CurrentlyBlockingOrParrying");
+	self:RemoveNumberValue("Mordhau_CurrentlyBlocking");
+	self:RemoveNumberValue("Mordhau_CurrentlyParrying");
 	
 	-- Clear AI values, just in case
 	
@@ -461,17 +463,6 @@ function ThreadedUpdate(self)
 		if self:NumberValueExists("Mordhau_AIBlockInput") and not isPlayerControlled then
 			heldReloadInput = true;
 		end
-		
-		-- TODO: real AI
-		if primaryInput and not isPlayerControlled then
-			if math.random(0, 100) > 66 then
-				primaryHotkeyInput = true;
-				primaryInput = false;
-			elseif math.random(0, 100) < 33 then
-				auxiliaryHotkeyInput = true;
-				primaryInput = false;
-			end
-		end
 	
 		-- Phase handling
 		if self.PlayingPhaseSet then	
@@ -511,8 +502,20 @@ function ThreadedUpdate(self)
 				-- Set our blocking/parrying flag for some code to use
 				if self.CurrentPhaseData.blocksAttacks or self.CurrentPhaseData.parriesAttacks then
 					self:SetNumberValue("Mordhau_CurrentlyBlockingOrParrying", 1);
+					if self.CurrentPhaseData.blocksAttacks then
+						self:SetNumberValue("Mordhau_CurrentlyBlocking", 1);
+					else
+						self:RemoveNumberValue("Mordhau_CurrentlyBlocking");
+					end
+					if self.CurrentPhaseData.parriesAttacks then
+						self:SetNumberValue("Mordhau_CurrentlyParrying", 1);
+					else
+						self:RemoveNumberValue("Mordhau_CurrentlyParrying");
+					end
 				else
 					self:RemoveNumberValue("Mordhau_CurrentlyBlockingOrParrying");
+					self:RemoveNumberValue("Mordhau_CurrentlyBlocking");
+					self:RemoveNumberValue("Mordhau_CurrentlyParrying");
 				end
 				self:RequestSyncedUpdate();
 				self.SyncedMessageActorAboutPhaseEnter = true;
@@ -615,8 +618,10 @@ function ThreadedUpdate(self)
 					
 					-- This is messy, but MOIDs aren't stable, we need to re-check
 					for k, v in pairs(self.HitMOTable) do
-						local id = ToMOSRotating(MovableMan:FindObjectByUniqueID(k)).ID;
-						table.insert(ignoreTable, id);
+						if MovableMan:FindObjectByUniqueID(k) then
+							local id = ToMOSRotating(MovableMan:FindObjectByUniqueID(k)).ID;
+							table.insert(ignoreTable, id);
+						end
 					end
 					
 					-- Manual while loop because we can have to repeat a ray sometimes and for loops are too finicky
@@ -638,6 +643,13 @@ function ThreadedUpdate(self)
 							local mo = MovableMan:GetMOFromID(moCheck);
 							self.LastHitTargetUniqueID = mo.UniqueID;
 							self.LastHitTargetPosition = SceneMan:GetLastRayHitPos();
+							
+							if mo:IsInGroup("Shields") then
+								-- Prioritize this collision check, break the loop so we can't hit anything else this frame and accidentally override
+								self.SyncedDoCollision = true;
+								self:RequestSyncedUpdate();
+								break;
+							end
 							
 							if mo:IsInGroup("Weapons - Melee") then
 								if mo:NumberValueExists("Mordhau_CurrentlyBlockingOrParrying") then
@@ -857,7 +869,9 @@ function ThreadedUpdate(self)
 			end
 			
 			self:RemoveNumberValue("Mordhau_CurrentlyBlockingOrParrying");
-			
+			self:RemoveNumberValue("Mordhau_CurrentlyBlocking");
+			self:RemoveNumberValue("Mordhau_CurrentlyParrying");	
+					
 			self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyAttacking");
 			self:RemoveNumberValue("Mordhau_AIWeaponCurrentlyBlockable");
 			self:RemoveNumberValue("Mordhau_AIWeaponCurrentRange");
@@ -1083,12 +1097,23 @@ function SyncedUpdate(self)
 					if IsAHuman(hitTargetRootParent) and self.FlinchesOnHit then
 						local human = ToAHuman(hitTargetRootParent);
 						
-						-- First check if we managed to hit the shield of someone who was blocking
+						-- First check if we managed to hit a shield
 						local toFlinch = true;
 						if hitTarget:IsInGroup("Shields") then
 							if human.EquippedItem and human.EquippedItem:IsInGroup("Weapons - Mordhau Melee") then
+								-- Check if the weapon of the shield holder is blocking, then we shouldn't flinch
 								if human.EquippedItem:NumberValueExists("Mordhau_CurrentlyBlockingOrParrying") then
 									toFlinch = false;
+								elseif hitTarget:NumberValueExists("Mordhau_ShieldHyperarmor") then
+									-- Also account for shield hyperarmor
+									toFlinch = false;
+								end
+								if hitTarget:NumberValueExists("Mordhau_ShieldCurrentlyParrying") then
+									-- Buffer into parry reaction - note we still damaged the shield that parried us
+									toFlinch = false;
+									self.PhaseSetWasParried = true;
+									self.PhaseSetWasBlocked = true;
+									hitTarget:SendMessage("Mordhau_ParryingShieldHit");
 								end
 							end
 						end

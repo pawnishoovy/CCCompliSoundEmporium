@@ -1,6 +1,5 @@
 -- Usage notes:
 
--- self.CompliSoundActorSprinting set to true will use Sprint instead of Walk sounds. It's up to you to keep track of it.
 -- You can set specific impact thresholds using self.CompliSoundActorImpactLightThreshold and self.CompliSoundActorImpactHeavyThreshold in a Lua file preceding this one.
 -- To play jump sounds, set self.CompliSoundActorPlayJumpSound to true for one frame. Terrain detection will be done automatically, and it will make landing sounds more consistent.
 
@@ -96,6 +95,8 @@ function Create(self)
 	-- Impulse threshold for heavy impact sound playing.
 	self.CompliSoundActorImpactHeavyThreshold = self.CompliSoundActorImpactHeavyThreshold or self.ImpulseDamageThreshold * 0.8;
 
+	-- Number of steps taken this walk input. Used to make the first step quieter, since it is instant.
+	self.CompliSoundStepsTakenThisInput = 0;
 	-- Keeping track of which foot we're stepping with and should run calculations on. Resets when not walking, because you always step with your FG Foot first.
 	self.CompliSoundActorFootIterator= 0;
 	-- Whether BG and FG foot are contacting ground.
@@ -140,12 +141,17 @@ function OnStride(self)
 				terrainID = 177; -- Default to concrete
 			end
 		
+			-- Note the volume is constantly re-set
+			local volumeMult = self.CompliSoundStepsTakenThisInput >= 1 and 1.0 or 0.25;
+		
 			if self.CompliSoundActorSprinting then
 				if self.CompliSoundActorTerrainSounds.Sprint[CompliSoundTerrainIDs[terrainID]] ~= nil then
+					self.CompliSoundActorTerrainSounds.Sprint[CompliSoundTerrainIDs[terrainID]].Volume = self.CompliSoundActorTerrainSoundDefaultVolumeOverride * volumeMult;
 					self.CompliSoundActorTerrainSounds.Sprint[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
 			else
 				if self.CompliSoundActorTerrainSounds.Walk[CompliSoundTerrainIDs[terrainID]] ~= nil then
+					self.CompliSoundActorTerrainSounds.Walk[CompliSoundTerrainIDs[terrainID]].Volume = self.CompliSoundActorTerrainSoundDefaultVolumeOverride * volumeMult;
 					self.CompliSoundActorTerrainSounds.Walk[CompliSoundTerrainIDs[terrainID]]:Play(self.Pos);
 				end
 			end
@@ -155,6 +161,8 @@ function OnStride(self)
 			end			
 		end
 	end
+	
+	self.CompliSoundStepsTakenThisInput = self.CompliSoundStepsTakenThisInput + 1;
 end
 
 function OnCollideWithTerrain(self, terrainID)
@@ -184,10 +192,14 @@ function ThreadedUpdate(self)
 	for soundType, soundTable in pairs(self.CompliSoundActorTerrainSounds) do
 		for terrain, soundContainer in pairs(soundTable) do
 			soundContainer.Pos = self.Pos;
-			soundContainer.Volume = self.CompliSoundActorTerrainSoundDefaultVolumeOverride
 			if self.CompliSoundActorCrouching then
 				soundContainer.Volume = soundContainer.Volume * 0.6;
 			end
+			if soundType == "Walk" or soundType == "Sprint" then
+				-- Let OnStride handle it
+			else
+				soundContainer.Volume = self.CompliSoundActorTerrainSoundDefaultVolumeOverride
+			end	
 		end
 	end
 
@@ -272,6 +284,7 @@ function ThreadedUpdate(self)
 	
 	if not self.CompliSoundActorMoving then
 		self.CompliSoundActorFootIterator = 0;
+		self.CompliSoundStepsTakenThisInput = 0;
 	end
 	
 	if self.CompliSoundActorWasInAir or self.CompliSoundActorIsJumping then

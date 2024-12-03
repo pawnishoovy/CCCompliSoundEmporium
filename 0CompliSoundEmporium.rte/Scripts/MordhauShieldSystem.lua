@@ -1,12 +1,26 @@
 function OnMessage(self, message, object)
-	if message == "Mordhau_ParryingShieldHit" then
-		if self.ParrySound then
-			self.ParrySound:Play(self.Pos);
+	if message == "Mordhau_ShieldHit" then
+		if self.Parrying then
+			if self.ParrySound then
+				self.ParrySound:Play(self.Pos);
+			end
+			self.ParriedAnAttack = true;
+			self:SetNumberValue("Mordhau_AIShieldParriedAnAttack", 1);
+		elseif self.Blocking then
+			self.BlockedAnAttack = true;
+			self:SetNumberValue("Mordhau_AIShieldBlockedAnAttack", 1);
 		end
 	end
 end
 
 function Create(self)
+
+	-----------------
+	----------------- Melee
+	-----------------
+	
+	self.Blocking = false;
+	self.Parrying = false;
 	
 	-- Set this so attacking weapons know not to flinch ever
 	if self.Hyperarmor then
@@ -57,14 +71,15 @@ end
 function OnDetach(self)
 	self.Parent = nil;
 	self.ParentController = nil;	
+	
+	self:RemoveNumberValue("Mordhau_AIShieldBlockedAnAttack");
+	self:RemoveNumberValue("Mordhau_AIShieldParriedAnAttack");
 end
 
 function ThreadedUpdate(self)
 	if self.ParrySound then
 		self.ParrySound.Pos = self.Pos;
 	end
-
-	self:RemoveNumberValue("Mordhau_ShieldCurrentlyParrying");
 	
 	self.AngVel = 0;
 	self.HorizontalAnim = 0;
@@ -105,6 +120,9 @@ function ThreadedUpdate(self)
 		
 		-- Blocking behavior
 		if reloadInput then	
+			self:SetNumberValue("Mordhau_ShieldCurrentlyBlocking", 1);
+			self.Blocking = true;
+		
 			-- Multiplied effective wounds when blocking
 			addWoundsNormally = false;
 			if self.WoundCount > self.LastWoundCount then
@@ -124,7 +142,15 @@ function ThreadedUpdate(self)
 			if self.ParriesWithWeapon and parentMelee and parentMelee:NumberValueExists("Mordhau_CurrentlyParrying") then
 				-- Let incoming weapons know to damage us then bounce as if parried
 				self:SetNumberValue("Mordhau_ShieldCurrentlyParrying", 1);
+				self.Parrying = true;
+			else
+				self.Parrying = false;
 			end
+		else
+			self:RemoveNumberValue("Mordhau_ShieldCurrentlyBlocking");
+			self.Blocking = false;
+			self:RemoveNumberValue("Mordhau_ShieldCurrentlyParrying");
+			self.Parrying = false;
 		end
 		
 		-- Animation
@@ -148,6 +174,11 @@ function ThreadedUpdate(self)
 		self.MordhauStanceOffset = self.MordhauStanceOffset + ((self.StanceOffsetTarget - self.MordhauStanceOffset) * math.min(1, TimerMan.DeltaTimeSecs * self.StanceOffsetSpeed));
 		self.StanceOffset = Vector(self.OriginalStanceOffset.X, self.OriginalStanceOffset.Y) + stanceAnim + self.MordhauStanceOffset;
 		self.SharpStanceOffset = Vector(self.OriginalStanceOffset.X, self.OriginalStanceOffset.Y) + stanceAnim + self.MordhauStanceOffset;		
+	else
+		self:RemoveNumberValue("Mordhau_ShieldCurrentlyBlocking");
+		self.Blocking = false;
+		self:RemoveNumberValue("Mordhau_ShieldCurrentlyParrying");
+		self.Parrying = false;
 	end
 	
 	if addWoundsNormally then

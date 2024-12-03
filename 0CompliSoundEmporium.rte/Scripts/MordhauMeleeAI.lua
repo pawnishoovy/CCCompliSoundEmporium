@@ -70,6 +70,9 @@ function Create(self)
 	self.MeleeAI.weaponInfo.validAttackPhaseSets = {};
 	self.MeleeAI.weaponNextAttackPhaseSetIndex = 1;
 	
+	-- Our Mordhau shield.
+	self.MeleeAI.shield = nil;	
+	
 	-- Parameters to randomize distance held from the opponent. This is a modifier on top of the AIRange of the next attack.
 	self.MeleeAI.distanceOffsetMin = -5
 	self.MeleeAI.distanceOffsetMax = 5
@@ -138,6 +141,15 @@ function ThreadedUpdateAI(self)
 		self.MeleeAI.weaponInfo = {};
 		self.MeleeAI.weaponInfo.validAttackPhaseSets = {};
 		self.MeleeAI.weaponNextAttackPhaseSetIndex = 1;
+	end
+	
+	local shield = self.EquippedBGItem;
+	if shield and shield:IsInGroup("Mordhau Shields") then
+		if (not self.MeleeAI.shield) or shield.UniqueID ~= self.MeleeAI.shield.UniqueID then
+			self.MeleeAI.shield = ToHeldDevice(shield);
+		end
+	elseif self.MeleeAI.shield ~= nil then
+		self.MeleeAI.shield = nil;
 	end
 	
 	-- Graphical debug info
@@ -230,16 +242,28 @@ function ThreadedUpdateAI(self)
 					
 					-- Sometimes we want to ignore further blocking and aggress immediately
 					local postBlockAggression = false;
-					if self.MeleeAI.weapon:NumberValueExists("Mordhau_AIParriedAnAttack") then
+					
+					local weaponParry = self.MeleeAI.weapon:NumberValueExists("Mordhau_AIParriedAnAttack");
+					local weaponBlock = self.MeleeAI.weapon:NumberValueExists("Mordhau_AIBlockedAnAttack");
+					local shieldParry = self.MeleeAI.shield and self.MeleeAI.shield:NumberValueExists("Mordhau_AIShieldParriedAnAttack");
+					local shieldBlock = self.MeleeAI.shield and self.MeleeAI.shield:NumberValueExists("Mordhau_AIShieldBlockedAnAttack");
+					
+					if weaponParry or shieldParry then
 						if self.MeleeAI.attemptingParry or math.random(0, 100) < self.MeleeAI.aggressionAfterRandomParryChance then
 							postBlockAggression = true;
 						end
 						self.MeleeAI.weapon:RemoveNumberValue("Mordhau_AIParriedAnAttack");
-					elseif self.MeleeAI.weapon:NumberValueExists("Mordhau_AIBlockedAnAttack") then
+						if self.MeleeAI.shield then
+							self.MeleeAI.shield:RemoveNumberValue("Mordhau_AIShieldParriedAnAttack");
+						end
+					elseif weaponBlock or shieldBlock then
 						if math.random(0, 100) < self.MeleeAI.aggressionAfterBlockChance then
 							postBlockAggression = true;
 						end
 						self.MeleeAI.weapon:RemoveNumberValue("Mordhau_AIBlockedAnAttack");
+						if self.MeleeAI.shield then
+							self.MeleeAI.shield:RemoveNumberValue("Mordhau_AIShieldBlockedAnAttack");
+						end
 					end
 					
 					-- Defend if appropriate

@@ -1113,9 +1113,9 @@ function SyncedUpdate(self)
 									toFlinch = false;
 									self.PhaseSetWasParried = true;
 									self.PhaseSetWasBlocked = true;
-									hitTarget:SendMessage("Mordhau_ParryingShieldHit");
 								end
 							end
+							hitTarget:SendMessage("Mordhau_ShieldHit");
 						end
 					
 						if toFlinch then

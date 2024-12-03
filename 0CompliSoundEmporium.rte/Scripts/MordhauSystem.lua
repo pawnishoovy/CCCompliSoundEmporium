@@ -18,7 +18,7 @@ function OnMessage(self, message, object)
 				actorMessageTable.blockType = "Parried";
 				
 				-- Block stamina
-				self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + self.BlockStaminaParryReward);
+				self.BlockStamina = math.min(self.BlockStaminaActingMaximum, self.BlockStamina + self.BlockStaminaParryReward);
 				self.BlockStamina = self.BlockStamina - (object.staminaDamage * self.BlockStaminaTakenDamageMultiplier * self.BlockStaminaParryDamageMultiplier);		
 			elseif self.CurrentPhaseData.blocksAttacks then
 				self.BlockFXFunction(self, object.attackType, object.hitPos);
@@ -26,7 +26,7 @@ function OnMessage(self, message, object)
 				self.DoBlockAnim = true;
 				
 				-- Out of stam blocking
-				if self.BlockStaminaEnabled and self.BlockStamina < (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) and self.Parent then
+				if self.BlockStaminaEnabled and self.BlockStamina < (self.BlockStaminaActingMaximum * self.BlockStaminaFailureThresholdMultiplier) and self.Parent then
 					messageTable.blockType = "NoStaminaBlocked";
 					messageTable.noStaminaDamageMultiplier = self.BlockStaminaNoStaminaDamageMultiplier;
 					MovableMan:FindObjectByUniqueID(object.senderUniqueID):SendMessage("Mordhau_MessageReturn_BlockResponse", messageTable);
@@ -34,7 +34,7 @@ function OnMessage(self, message, object)
 					actorMessageTable.blockType = "NoStaminaBlocked";
 
 					-- Disarming
-					if self.BlockStaminaDisarmBelowThreshold and self.BlockStamina < (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) then
+					if self.BlockStaminaDisarmBelowThreshold and self.BlockStamina < (self.BlockStaminaActingMaximum * self.BlockStaminaFailureThresholdMultiplier) then
 						-- Send it now, we won't get a chance later, Parent will be nil
 						actorMessageTable.blockType = "Disarmed";
 						self.Parent:SendMessage("Mordhau_ActorReceivedBlockableAttackInfo", actorMessageTable);
@@ -255,9 +255,11 @@ function Create(self)
 	
 	self.ParriedCooldownTimer = Timer();
 	
+	self.BlockStaminActingMaximum = self.BlockStaminaMaximum;
+	
 	self.BlockStaminaEnabled = self.BlockStaminaMaximum > 0;
 	
-	self.BlockStamina = self:NumberValueExists("Mordhau_BlockStamina") and self:GetNumberValue("Mordhau_BlockStamina") or self.BlockStaminaMaximum
+	self.BlockStamina = self:NumberValueExists("Mordhau_BlockStamina") and self:GetNumberValue("Mordhau_BlockStamina") or self.BlockStaminaActingMaximum
 	self:RemoveNumberValue("Mordhau_BlockStamina");	
 	
 	self.BlockStaminaRegenDelayTimer = Timer();
@@ -361,7 +363,13 @@ function OnAttach(self, newParent)
 			playPhaseSet(self, self.EquipPhaseSetName);
 		end
 		
-		self.BlockStamina = self.BlockStaminaMaximum;
+		if self.BlockStaminaRespectGripStrength and IsArm(newParent) then
+			self.BlockStaminaActingMaximum = self.BlockStaminaMaximum * (newParent.GripStrength / self.BlockStaminaExpectedGripStrength);
+		else
+			self.BlockStaminaActingMaximum = self.BlockStaminaMaximum;
+		end
+		
+		self.BlockStamina = self.BlockStaminaActingMaximum;
 		self:SetNumberValue("Mordhau_BlockStaminaPercentage", 1);
 		
 		self.HUDVisible = false;
@@ -534,7 +542,7 @@ function ThreadedUpdate(self)
 			-- TODO: remove this, irrelevant?
 			-- Disable blocking if we're under the required stamina.
 			if self.BlockStaminaEnabled then
-				--if self.BlockStamina < (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) then
+				--if self.BlockStamina < (self.BlockStaminaActingMaximum * self.BlockStaminaFailureThresholdMultiplier) then
 				--	self.CurrentPhaseData.blocksAttacks = false;
 				--end
 			end
@@ -888,10 +896,10 @@ function ThreadedUpdate(self)
 			if self.CurrentPhaseData and self.CurrentPhaseData.blocksAttacks then
 				regenRate = self.BlockStaminaRegenRate * self.BlockStaminaBlockingRegenMultiplier;
 			end
-			self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + TimerMan.DeltaTimeSecs * regenRate);
+			self.BlockStamina = math.min(self.BlockStaminaActingMaximum, self.BlockStamina + TimerMan.DeltaTimeSecs * regenRate);
 		end
 		
-		self:SetNumberValue("Mordhau_BlockStaminaPercentage", (self.BlockStamina - (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier)) / (self.BlockStaminaMaximum));
+		self:SetNumberValue("Mordhau_BlockStaminaPercentage", (self.BlockStamina - (self.BlockStaminaActingMaximum * self.BlockStaminaFailureThresholdMultiplier)) / (self.BlockStaminaActingMaximum));
 		
 		-- Block stamina bar
 		if (isPlayerControlled or self.DrawBlockStaminaBarForAI) and self.BlockStaminaEnabled and self.DrawBlockStaminaBar then
@@ -906,9 +914,9 @@ function ThreadedUpdate(self)
 			
 			local hudBarOffset = Vector(1, 1);
 			
-			local hudBarWidth = 30 * (self.BlockStamina / self.BlockStaminaMaximum);
+			local hudBarWidth = 30 * (self.BlockStamina / self.BlockStaminaActingMaximum);
 
-			hudBarColor = self.BlockStamina > (self.BlockStaminaMaximum * self.BlockStaminaFailureThresholdMultiplier) and 87 or 47;
+			hudBarColor = self.BlockStamina > (self.BlockStaminaActingMaximum * self.BlockStaminaFailureThresholdMultiplier) and 87 or 47;
 
 			PrimitiveMan:DrawBoxFillPrimitive(hudOrigin + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), hudOrigin + Vector(hudBarWidthOutline * 0.5, hudBarHeight * 0.5), hudBarColorBG);
 			PrimitiveMan:DrawBoxFillPrimitive(hudOrigin + Vector(hudBarWidthOutline * -0.5, hudBarHeight * -0.5), hudOrigin + Vector(hudBarWidthOutline * -0.5 + hudBarWidth, hudBarHeight * 0.5), hudBarColor);
@@ -1035,7 +1043,7 @@ function SyncedUpdate(self)
 					
 					self.HitMOFXFunction(self, hitTarget, self.LastHitTargetPosition);
 					
-					self.BlockStamina = math.min(self.BlockStaminaMaximum, self.BlockStamina + self.BlockStaminaHitMOReward);
+					self.BlockStamina = math.min(self.BlockStaminaActingMaximum, self.BlockStamina + self.BlockStaminaHitMOReward);
 					
 					local woundOffset = SceneMan:ShortestDistance(hitTarget.Pos, self.LastHitTargetPosition, SceneMan.SceneWrapsX);
 					local woundAngle = woundOffset.AbsRadAngle - hitTarget.RotAngle;		

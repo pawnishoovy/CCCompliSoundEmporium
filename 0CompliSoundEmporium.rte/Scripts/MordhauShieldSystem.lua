@@ -144,6 +144,7 @@ function ThreadedUpdate(self)
 				self:SetNumberValue("Mordhau_ShieldCurrentlyParrying", 1);
 				self.Parrying = true;
 			else
+				self:RemoveNumberValue("Mordhau_ShieldCurrentlyParrying");
 				self.Parrying = false;
 			end
 		else

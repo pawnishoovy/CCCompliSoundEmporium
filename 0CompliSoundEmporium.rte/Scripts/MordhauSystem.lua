@@ -87,6 +87,11 @@ function OnMessage(self, message, object)
 			-- who the hell sent us the message?
 		end
 	end
+	
+	-- Only use this if you're really sure of what you're doing.
+	if message == "Mordhau_ChangeVar" then
+		self[object.varName] = object.newValue;
+	end	
 end
 
 function playPhaseSet(self, name)

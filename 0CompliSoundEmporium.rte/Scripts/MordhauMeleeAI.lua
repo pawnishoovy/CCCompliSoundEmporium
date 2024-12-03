@@ -30,6 +30,11 @@ function OnMessage(self, message, object)
 	elseif message == "Mordhau_HitFlinch" then
 		-- For now, weapon just stops attacking by itself
 	end
+	
+	-- Only use this if you're really sure of what you're doing.
+	if message == "Mordhau_AIChangeVar" then
+		self.MeleeAI[object.varName] = object.newValue;
+	end
 end
 
 function Create(self)

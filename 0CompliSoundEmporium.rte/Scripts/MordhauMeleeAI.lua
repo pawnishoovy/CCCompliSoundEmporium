@@ -34,6 +34,15 @@ function OnMessage(self, message, object)
 	-- Only use this if you're really sure of what you're doing.
 	if message == "Mordhau_AIChangeVar" then
 		self.MeleeAI[object.varName] = object.newValue;
+		
+		-- Recalculate skill-based vars, just in case
+		self.MeleeAI.parryChance = 90 * self.MeleeAI.skill;
+		self.MeleeAI.aggressionAfterBlockChance = 90 * self.MeleeAI.skill;
+		self.MeleeAI.aggressionAfterRandomParryChance = 100 * self.MeleeAI.skill;
+		
+		self.MeleeAI.blockingDelayMax = 600 * (0.05 + 0.95 * (1 - self.MeleeAI.skill));
+		
+		self.MeleeAI.attackOpportunityMissThresholdGain = 15 * (1 - self.MeleeAI.skill);
 	end
 end
 
@@ -79,26 +88,26 @@ function Create(self)
 	self.MeleeAI.shield = nil;	
 	
 	-- Parameters to randomize distance held from the opponent. This is a modifier on top of the AIRange of the next attack.
-	self.MeleeAI.distanceOffsetMin = -5
-	self.MeleeAI.distanceOffsetMax = 5
-	self.MeleeAI.distanceOffset = RangeRand(self.MeleeAI.distanceOffsetMin, self.MeleeAI.distanceOffsetMax)
-	self.MeleeAI.distanceOffsetDelayTimer = Timer()
-	self.MeleeAI.distanceOffsetDelayMin = 700
-	self.MeleeAI.distanceOffsetDelayMax = 2200
-	self.MeleeAI.distanceOffsetDelay = RangeRand(self.MeleeAI.distanceOffsetDelayMin, self.MeleeAI.distanceOffsetDelayMax)
+	self.MeleeAI.distanceOffsetMin = -5;
+	self.MeleeAI.distanceOffsetMax = 5;
+	self.MeleeAI.distanceOffset = RangeRand(self.MeleeAI.distanceOffsetMin, self.MeleeAI.distanceOffsetMax);
+	self.MeleeAI.distanceOffsetDelayTimer = Timer();
+	self.MeleeAI.distanceOffsetDelayMin = 700;
+	self.MeleeAI.distanceOffsetDelayMax = 2200;
+	self.MeleeAI.distanceOffsetDelay = RangeRand(self.MeleeAI.distanceOffsetDelayMin, self.MeleeAI.distanceOffsetDelayMax);
 	
 	-- Blocking parameters.
-	self.MeleeAI.blocking = false
-	self.MeleeAI.blockingDelayMax = 600 * (0.05 + 0.95 * (1 - self.MeleeAI.skill))
-	self.MeleeAI.blockingDelay = self.MeleeAI.blockingDelayMax * 0.05
-	self.MeleeAI.blockingDelayTimer = Timer()
+	self.MeleeAI.blocking = false;
+	self.MeleeAI.blockingDelayMax = 600 * (0.05 + 0.95 * (1 - self.MeleeAI.skill));
+	self.MeleeAI.blockingDelay = self.MeleeAI.blockingDelayMax * 0.05;
+	self.MeleeAI.blockingDelayTimer = Timer();
 	
 	-- I don't really know how this works. Fil made it. It probably does something.
-	self.MeleeAI.attacking = false
-	self.MeleeAI.attackOpportunityMissThreshold = 0
-	self.MeleeAI.attackOpportunityMissThresholdGain = 15 * (1 - self.MeleeAI.skill)
-	self.MeleeAI.attackOpportunityMissDelay = 500
-	self.MeleeAI.attackOpportunityMissTimer = Timer()	
+	self.MeleeAI.attacking = false;
+	self.MeleeAI.attackOpportunityMissThreshold = 0;
+	self.MeleeAI.attackOpportunityMissThresholdGain = 15 * (1 - self.MeleeAI.skill);
+	self.MeleeAI.attackOpportunityMissDelay = 500;
+	self.MeleeAI.attackOpportunityMissTimer = Timer();
 	
 	-- "Tactic" functions that change behavior. Returns final distance offset and can also do other things every frame.
 	self.MeleeAI.tactics = {
@@ -111,14 +120,14 @@ function Create(self)
 		end,
 		["Defensive"] = function ()
 			self.MeleeAI.controller:SetState(Controller.MOVE_FAST, false);
-			return self.MeleeAI.distanceOffset -- Basic behaviour
+			return self.MeleeAI.distanceOffset; -- Basic behaviour
 		end,
 		["Retreat"] = function ()
 			return math.abs(self.MeleeAI.distanceOffset) + (30 * self.MeleeAI.skill); -- Higher skill retreats further and is safer
 		end
 	}
 	
-	self.MeleeAI.tactic = "Defensive"
+	self.MeleeAI.tactic = "Defensive";
 	
 end
 

@@ -104,8 +104,8 @@ function ThreadedUpdate(self)
 		-- TODO: fix this mess
 		local reloadInput;
 		local heldReloadInput;
-		reloadInput = self.ParentController:IsState(Controller.WEAPON_RELOAD) 
-		heldReloadInput = isPlayerControlled and UInputMan:KeyHeld(Key.R);
+		reloadInput = self.ParentController:IsState(Controller.WEAPON_RELOAD);
+		heldReloadInput = self.ParentController:IsState(Controller.WEAPON_RELOADHELD);
 		reloadInput = heldReloadInput and heldReloadInput or reloadInput;
 	
 		self.RotationTarget = self.IdleRotationTarget;

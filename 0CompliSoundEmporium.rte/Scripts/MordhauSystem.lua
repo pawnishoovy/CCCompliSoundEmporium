@@ -304,6 +304,7 @@ function Create(self)
 	----------------- Thread safety :)
 	-----------------	
 	
+	self.SyncedDoCollision = false;
 	self.SyncedMessageActorAboutPhaseSet = false;
 	self.SyncedMessageActorAboutPhaseEnter = false;
 	
@@ -451,8 +452,8 @@ function ThreadedUpdate(self)
 		-- TODO: fix this mess
 		local reloadInput;
 		local heldReloadInput;
-		reloadInput = self.ParentController:IsState(Controller.WEAPON_RELOAD) 
-		heldReloadInput = isPlayerControlled and UInputMan:KeyHeld(Key.R);
+		reloadInput = self.ParentController:IsState(Controller.WEAPON_RELOAD);
+		heldReloadInput = self.ParentController:IsState(Controller.WEAPON_RELOADHELD);
 		
 		-- Make attacking from a block not risk just insta-block-cancelling
 		if reloadInput and anyAttackInput and not self.PhaseSetWasBlocked then
@@ -623,7 +624,7 @@ function ThreadedUpdate(self)
 					wasCollidable  = true;				
 					self:SetNumberValue("Mordhau_AIWeaponCurrentlyBlockable", 1);
 					local vecBetweenRays = (self.CurrentPhaseData.rayVecSecondPos - self.CurrentPhaseData.rayVecFirstPos) / self.CurrentPhaseData.rayDensity;
-					local rayFirstPos = self.CurrentPhaseData.rayVecFirstPos;
+					local rayPos = self.CurrentPhaseData.rayVecFirstPos;
 					
 					local weaponIDToIgnore = nil;
 					
@@ -636,11 +637,13 @@ function ThreadedUpdate(self)
 							table.insert(ignoreTable, id);
 						end
 					end
+									
+					local breakRayLoop = false;
 					
-					-- Manual while loop because we can have to repeat a ray sometimes and for loops are too finicky
-					local i = 1;
-					while i < self.CurrentPhaseData.rayDensity + 1 do				
-						local rayPos = rayFirstPos + (vecBetweenRays * (i - 1));
+					for i = 1, self.CurrentPhaseData.rayDensity do
+						if breakRayLoop then
+							break;
+						end			
 					
 						local rayVec = Vector(self.CurrentPhaseData.rayRange * self.FlipFactor, 0):RadRotate(self.RotAngle):DegRotate(self.CurrentPhaseData.rayAngle*self.FlipFactor)
 						local rayOrigin = Vector(self.Pos.X, self.Pos.Y) + Vector(rayPos.X * self.FlipFactor, rayPos.Y):RadRotate(self.RotAngle)
@@ -649,18 +652,21 @@ function ThreadedUpdate(self)
 							PrimitiveMan:DrawLinePrimitive(rayOrigin, rayOrigin + rayVec,  5);
 						end
 					
-						-- TODO: Use table of ignored MOIDs here once supported
-						-- including HitMOTable
-						local moCheck = SceneMan:CastMORay(rayOrigin, rayVec, weaponIDToIgnore or self.RootID, self.Team, 0, false, 1); -- Raycast
-						if moCheck ~= rte.NoMOID then
-							local mo = MovableMan:GetMOFromID(moCheck);
+						local detectedMOList = SceneMan:CastAllMOsRay(rayOrigin, rayVec, ignoreTable, self.Team, 0, false, 0); -- Raycast
+						local detectedAtLeastOneMO = false;
+						for mo in detectedMOList do
+							detectedAtLeastOneMO = true;
 							self.LastHitTargetUniqueID = mo.UniqueID;
-							self.LastHitTargetPosition = SceneMan:GetLastRayHitPos();
+							
+							-- CastAllMOsRay doesn't give us an easy LastRayHitPos, so we need this
+							self.LastHitTargetPosition = Vector(0, 0);
+							SceneMan:CastFindMORay(rayOrigin, rayVec, mo.ID, self.LastHitTargetPosition, 0, true, 0);
 							
 							if mo:IsInGroup("Shields") then
 								-- Prioritize this collision check, break the loop so we can't hit anything else this frame and accidentally override
 								self.SyncedDoCollision = true;
 								self:RequestSyncedUpdate();
+								breakRayLoop = true;
 								break;
 							end
 							
@@ -669,20 +675,19 @@ function ThreadedUpdate(self)
 									-- Prioritize this collision check, break the loop so we can't hit anything else this frame and accidentally override
 									self.SyncedDoCollision = true;
 									self:RequestSyncedUpdate();
+									breakRayLoop = true;
 									break;
 								else
-									-- We don't wanna mess with this weapon
-									-- TODO: add to ignoretable instead once supported
-									weaponIDToIgnore = moCheck;
-									-- Counteract the + 1 at the end of the while loop, so we repeat this same ray with the non-blocking weapon ignored
-									i = i - 1;
+									-- We don't wanna mess with this non-blocking weapon
 								end
 							else
 								-- Prepare to check this collision later this frame regularly
 								self.SyncedDoCollision = true;
 								self:RequestSyncedUpdate();
 							end
-						elseif not self.PhaseSetWasInterruptedByTerrain then -- After checking for MOs, check for terrain
+						end
+						
+						if (not detectedAtLeastOneMO) and (not self.PhaseSetWasInterruptedByTerrain) then -- After checking for MOs, check for terrain
 							local terrCheck = SceneMan:CastMaxStrengthRay(rayOrigin, rayOrigin + (rayVec * self.CurrentPhaseData.rayTerrainRangeMultiplier), 1);
 							if terrCheck > 5 then
 								self.LastHitTerrainPosition = SceneMan:GetLastRayHitPos();
@@ -719,8 +724,9 @@ function ThreadedUpdate(self)
 									end
 								end
 							end
-						end					
-						i = i + 1;
+						end		
+						
+						local rayPos = rayPos + vecBetweenRays;					
 					end
 				end
 			end			
@@ -1099,7 +1105,7 @@ function SyncedUpdate(self)
 						-- Apply impulse and force
 						local kineticVec = Vector(self.CurrentPhaseData.rayRange * self.FlipFactor, 0):RadRotate(self.RotAngle):DegRotate(self.CurrentPhaseData.rayAngle*self.FlipFactor);
 						
-						local impulseEnergy = self.CurrentPhaseData.kineticEnergy
+						local impulseEnergy = self.CurrentPhaseData.kineticEnergy / 10;
 						hitTarget:AddAbsImpulseForce(kineticVec:SetMagnitude(impulseEnergy), self.LastHitTargetPosition);
 						
 						local forceEnergy = self.CurrentPhaseData.kineticEnergy * self.CurrentPhaseData.kineticEnergy;
